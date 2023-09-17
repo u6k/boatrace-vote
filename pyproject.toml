@@ -40,3 +40,5 @@ line_length = 1000
 lint = "pflake8 ./boatrace_vote/ ./tests/"
 fix = [{cmd="autopep8 -ivr ./boatrace_vote/ ./tests/"}, {cmd="isort ./boatrace_vote/ ./tests/"}]
 test = "pytest"
+
+create_racelist = "python boatrace_vote/create_racelist.py"

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "boatrace-vote"
-version = "0.1.0"
+version = "0.1.0-dev"
 description = ""
 authors = ["u6k"]
 license = "MIT License"
@@ -9,8 +9,34 @@ packages = [{include = "boatrace_vote"}]
 
 [tool.poetry.dependencies]
 python = "^3.11"
+boto3 = "^1.28.49"
+pandas = "^2.1.0"
+poethepoet = "^0.22.1"
 
+
+[tool.poetry.group.dev.dependencies]
+isort = "^5.12.0"
+flake8 = "^6.0.0"
+pyproject-flake8 = "^6.0.0.post1"
+pytest = "^7.4.2"
+autopep8 = "^2.0.4"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+
+[tool.autopep8]
+max_line_length = 1000
+
+[tool.flake8]
+max-line-length = 1000
+
+[tool.isort]
+profile = "black"
+line_length = 1000
+
+[tool.poe.tasks]
+lint = "pflake8 ./boatrace_vote/ ./tests/"
+fix = [{cmd="autopep8 -ivr ./boatrace_vote/ ./tests/"}, {cmd="isort ./boatrace_vote/ ./tests/"}]
+test = "pytest"

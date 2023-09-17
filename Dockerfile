@@ -10,7 +10,7 @@ RUN curl -sSL https://install.python-poetry.org | python3 - && \
 WORKDIR /var/myapp
 VOLUME /var/myapp
 
-#COPY pyproject.toml poetry.lock ./
-#RUN poetry install --no-root
+COPY pyproject.toml poetry.lock ./
+RUN poetry install --no-root
 
 CMD ["poetry", "help"]

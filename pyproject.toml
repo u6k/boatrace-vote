@@ -42,3 +42,5 @@ fix = [{cmd="autopep8 -ivr ./boatrace_vote/ ./tests/"}, {cmd="isort ./boatrace_v
 test = "pytest"
 
 create_racelist = "python boatrace_vote/create_racelist.py"
+find_vote_race = "python boatrace_vote/find_vote_race.py"
+vote_race = "python boatrace_vote/vote_race.py"

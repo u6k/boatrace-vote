@@ -7,4 +7,5 @@ services:
       dockerfile: ./Dockerfile
     volumes:
       - .:/var/myapp
+      - ./output:/var/output
     env_file: .env

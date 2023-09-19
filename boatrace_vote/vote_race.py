@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 import utils
 
-L = utils.get_logger("vote_tickets")
+L = utils.get_logger("vote_race")
 
 
 def get_target_race(current_datetime, s3_vote_folder):
@@ -30,10 +30,10 @@ def get_target_race(current_datetime, s3_vote_folder):
     df_tmp = df_racelist[(start_t <= df_racelist["start_datetime"]) & (df_racelist["start_datetime"] < end_t)]
     L.debug(df_tmp)
 
-    # 未投票、現在時刻+5分より前、最新、のレースを特定する
+    # 未投票、現在時刻+10分より前、最新、のレースを特定する
     df_target_race = df_racelist[df_racelist["vote_timestamp"].isnull()]
 
-    t = current_datetime + timedelta(minutes=5)
+    t = current_datetime + timedelta(minutes=10)
     df_target_race = df_target_race[df_target_race["start_datetime"] < t]
 
     if len(df_target_race) > 0:
@@ -110,6 +110,17 @@ def vote_race(current_datetime, df_arg_racelist, df_arg_race, df_arg_odds, df_ar
 
     race_id = df_arg_race["race_id"].values[0]
 
+    if df_arg_odds is None:
+        # レースが中止となった場合、投票しない
+        df_vote = None
+
+        idx = df_arg_racelist[df_arg_racelist["race_id"] == race_id].index[0]
+
+        df_arg_racelist.at[idx, "vote_timestamp"] = current_datetime
+        df_arg_racelist.at[idx, "vote_amount"] = 0
+
+        return df_vote, df_arg_racelist
+
     # 投票対象の舟券を抽出する
     df_vote = df_arg_ticket[[
         "race_id",
@@ -158,13 +169,16 @@ def upload_vote(df_arg_race, df_arg_vote, df_arg_racelist, s3_vote_folder):
 
     s3 = utils.S3Storage()
 
-    with io.BytesIO() as b:
-        df_arg_vote.to_pickle(b, compression="gzip")
-        key = f"{s3_vote_folder}/df_vote_{race_id}.pkl.gz"
+    if df_arg_vote is not None:
+        with io.BytesIO() as b:
+            df_arg_vote.to_pickle(b, compression="gzip")
+            key = f"{s3_vote_folder}/df_vote_{race_id}.pkl.gz"
 
-        s3.put_object(key, b.getvalue())
+            s3.put_object(key, b.getvalue())
 
-        L.debug(f"投票データをアップロード: {key}")
+            L.debug(f"投票データをアップロード: {key}")
+    else:
+        L.debug("投票データがNoneのためアップロードしない")
 
     with io.BytesIO() as b:
         df_arg_racelist.to_pickle(b, compression="gzip")

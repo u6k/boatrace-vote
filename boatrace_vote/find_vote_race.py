@@ -1,12 +1,11 @@
 import io
 import os
-import sys
 from datetime import datetime, timedelta
 
 import pandas as pd
 import utils
 
-L = utils.get_logger("vote_tickets")
+L = utils.get_logger("find_vote_race")
 
 
 def get_target_race(current_datetime, s3_vote_folder):
@@ -48,29 +47,23 @@ def get_target_race(current_datetime, s3_vote_folder):
     return df_target_race, df_racelist
 
 
-def output_parameter_files(df_arg_race):
+def output_parameter_files(df_arg_race, df_racelist):
     """クロールを実行するためのパラメーターファイルを出力する。
     """
 
-    # 値を抽出する
-    race_id = df_arg_race["race_id"].values[0]
-    race_round = df_arg_race["race_round"].values[0]
-    place_id = df_arg_race["place_id"].values[0]
-    start_datetime = df_arg_race["start_datetime"].dt.strftime("%Y%m%d").values[0]
+    if df_arg_race is not None:
+        # 投票対象レースが存在する場合、ファイル出力する
+        df_arg_race.to_csv("/var/output/df_race.csv")
+        df_arg_race.to_pickle("/var/output/df_race.pkl.gz")
+    else:
+        # 存在しない場合、ファイルを削除する
+        if os.path.isfile("/var/output/df_race.csv"):
+            os.remove("/var/output/df_race.csv")
+        if os.path.isfile("/var/output/df_race.pkl.gz"):
+            os.remove("/var/output/df_race.pkl.gz")
 
-    # パラメーターを生成する
-    s3_feed_url = f"s3://boatrace/feed/race_{race_id}.json"
-    L.debug(f"S3フィードURL: {s3_feed_url}")
-
-    crawl_url = f"https://www.boatrace.jp/owpc/pc/race/racelist?rno={race_round}&jcd={place_id}&hd={start_datetime}"
-    L.debug(f"クロールURL: {crawl_url}")
-
-    # ファイルに出力する
-    with open("/var/output/s3_feed_url.txt", mode="w") as f:
-        f.write(s3_feed_url)
-
-    with open("/var/output/crawl_url.txt", mode="w") as f:
-        f.write(crawl_url)
+    df_racelist.to_csv("/var/output/df_racelist.csv")
+    df_racelist.to_pickle("/var/output/df_racelist.pkl.gz")
 
 
 def main():
@@ -92,14 +85,10 @@ def main():
     L.info("対象レース")
     L.info(df_target_race)
 
-    if df_target_race is None:
-        L.info("対象レースが存在しないため、処理を終了する")
-        sys.exit(1)
-
     # クロール用パラメーターファイルを出力する
     L.info("# クロール用パラメーターファイルを出力する")
 
-    output_parameter_files(df_target_race)
+    output_parameter_files(df_target_race, df_racelist)
 
 
 if __name__ == "__main__":

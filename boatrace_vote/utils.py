@@ -436,7 +436,7 @@ def parse_race_payoff(json_data):
     if json_data["payoff"][0] == "\xa0":
         i["payoff"] = None
     else:
-        i["payoff"] = int(json_data["payoff"][0].replace("¥", "").replace(",", ""))  # "payoff": ["¥1,450"]
+        i["payoff"] = int(json_data["payoff"][0].replace("¥", "").replace(",", "")) / 100.0  # "payoff": ["¥1,450"]
 
     return i
 

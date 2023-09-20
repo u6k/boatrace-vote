@@ -14,3 +14,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [#10091: 舟券投票アクション(仮)を行う](https://redmine.u6k.me/issues/10091)
 - [#10092: 投票結果清算アクション(仮)を行う](https://redmine.u6k.me/issues/10092)
 - [#10097: 対象レースを探すときはレース一覧データから、実際に投票/清算するときの対象レースはローカルストレージから取得する](https://redmine.u6k.me/issues/10097)
+- [#10113: 払戻はデータ読み込み時に率に直す](https://redmine.u6k.me/issues/10113)

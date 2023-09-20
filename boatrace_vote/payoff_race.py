@@ -10,7 +10,7 @@ L = utils.get_logger("payoff_race")
 
 
 def get_target_race(current_datetime, s3_vote_folder):
-    """投票対象レースを見つける
+    """清算対象レースを見つける
     """
 
     # レース一覧データを取得する
@@ -86,8 +86,9 @@ def payoff_race(current_datetime, df_arg_racelist, df_arg_race, df_arg_odds, df_
 
         return df_arg_vote, df_arg_racelist
 
-    # TODO: まだ結果が出ていない場合
-    # TODO: payoff/100.0する
+    if df_arg_payoff is None:
+        # まだ結果が出ていない場合、処理をしない
+        return None, df_arg_racelist
 
     if len(df_arg_vote) == 0:
         # 舟券に投票しなかった場合、0で清算する

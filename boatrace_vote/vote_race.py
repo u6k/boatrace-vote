@@ -30,10 +30,10 @@ def get_target_race(current_datetime, s3_vote_folder):
     df_tmp = df_racelist[(start_t <= df_racelist["start_datetime"]) & (df_racelist["start_datetime"] < end_t)]
     L.debug(df_tmp)
 
-    # 未投票、現在時刻+10分より前、最新、のレースを特定する
+    # 未投票、現在時刻+5分より前、最新、のレースを特定する
     df_target_race = df_racelist[df_racelist["vote_timestamp"].isnull()]
 
-    t = current_datetime + timedelta(minutes=10)
+    t = current_datetime + timedelta(minutes=5)
     df_target_race = df_target_race[df_target_race["start_datetime"] < t]
 
     if len(df_target_race) > 0:

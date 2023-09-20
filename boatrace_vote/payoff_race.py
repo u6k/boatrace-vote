@@ -1,7 +1,6 @@
 import io
 import json
 import os
-import sys
 from datetime import datetime, timedelta
 
 import pandas as pd
@@ -50,7 +49,6 @@ def get_target_race(current_datetime, s3_vote_folder):
     return df_target_race, df_racelist
 
 
-
 def get_vote_race(df_arg_race, s3_vote_folder):
     """投票データを取得する。
     """
@@ -64,13 +62,6 @@ def get_vote_race(df_arg_race, s3_vote_folder):
         df_vote = pd.read_pickle(b, compression="gzip")
 
     return df_vote
-
-
-
-
-
-
-
 
 
 def get_feed_data(df_arg_race):
@@ -90,12 +81,6 @@ def get_feed_data(df_arg_race):
     return utils.parse_feed_json(json_data)
 
 
-
-
-
-
-
-
 def payoff_race(current_datetime, df_arg_racelist, df_arg_race, df_arg_odds, df_arg_payoff, df_arg_vote):
     """対象レースを清算(仮)する。
     """
@@ -108,15 +93,15 @@ def payoff_race(current_datetime, df_arg_racelist, df_arg_race, df_arg_odds, df_
 
     if df_arg_odds is None:
         # 中止になった場合、0で清算する
-        df_vote["odds_fix"] = 0.0
-        df_vote["payoff_amount"] = 0.0
+        df_arg_vote["odds_fix"] = 0.0
+        df_arg_vote["payoff_amount"] = 0.0
 
         idx = df_arg_racelist[df_arg_racelist["race_id"] == race_id].index[0]
 
         df_arg_racelist.at[idx, "result_timestamp"] = current_datetime
         df_arg_racelist.at[idx, "return_amount"] = 0
 
-        return df_vote, df_arg_racelist
+        return df_arg_vote, df_arg_racelist
 
     # TODO: まだ結果が出ていない場合
     # TODO: payoff/100.0する
@@ -227,8 +212,6 @@ def main():
 
     race_id = df_target_race["race_id"].values[0]
 
-
-
     # 投票データを取得する
     L.info("# 投票データを取得する")
 
@@ -236,8 +219,6 @@ def main():
 
     L.info("df_vote")
     L.info(df_vote)
-
-
 
     # フィードjsonからレースデータを取得する
     L.info("# フィードjsonからレースデータを取得する")
@@ -258,10 +239,6 @@ def main():
 
     L.debug("df_race_odds")
     L.debug(df_race_odds)
-
-
-
-
 
     # 清算する
     L.info("# 清算する")

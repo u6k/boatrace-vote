@@ -117,9 +117,6 @@ def main_vote():
     print(proc.stderr)
 
 
-
-
-
 def main_payoff():
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"現在時刻: {now_str}")
@@ -214,15 +211,6 @@ def main_payoff():
     print(proc.stdout)
     print("stderr")
     print(proc.stderr)
-
-
-
-
-
-
-
-
-
 
 
 def loop():

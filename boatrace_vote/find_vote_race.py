@@ -53,14 +53,14 @@ def output_parameter_files(df_arg_race, df_racelist):
 
     if df_arg_race is not None:
         # 投票対象レースが存在する場合、ファイル出力する
-        df_arg_race.to_csv("/var/output/df_race.csv")
-        df_arg_race.to_pickle("/var/output/df_race.pkl.gz")
+        df_arg_race.to_csv("/var/output/df_vote_race.csv")
+        df_arg_race.to_pickle("/var/output/df_vote_race.pkl.gz")
     else:
         # 存在しない場合、ファイルを削除する
-        if os.path.isfile("/var/output/df_race.csv"):
-            os.remove("/var/output/df_race.csv")
-        if os.path.isfile("/var/output/df_race.pkl.gz"):
-            os.remove("/var/output/df_race.pkl.gz")
+        if os.path.isfile("/var/output/df_vote_race.csv"):
+            os.remove("/var/output/df_vote_race.csv")
+        if os.path.isfile("/var/output/df_vote_race.pkl.gz"):
+            os.remove("/var/output/df_vote_race.pkl.gz")
 
     df_racelist.to_csv("/var/output/df_racelist.csv")
     df_racelist.to_pickle("/var/output/df_racelist.pkl.gz")

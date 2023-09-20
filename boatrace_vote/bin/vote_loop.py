@@ -20,7 +20,7 @@ DOCKER_IMAGE_VOTE = os.environ["DOCKER_IMAGE_VOTE"]
 DOCKER_IMAGE_CRAWLER = os.environ["DOCKER_IMAGE_CRAWLER"]
 
 
-def main():
+def main_vote():
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"現在時刻: {now_str}")
 
@@ -49,13 +49,13 @@ def main():
     print("stderr")
     print(proc.stderr)
 
-    if not os.path.isfile("./output/df_race.pkl.gz"):
+    if not os.path.isfile("./output/df_vote_race.pkl.gz"):
         # 投票対象レースがない場合、処理を戻す
         print("投票対象レースが存在しない")
         return
 
     else:
-        df_race = pd.read_pickle("./output/df_race.pkl.gz")
+        df_race = pd.read_pickle("./output/df_vote_race.pkl.gz")
 
     # 投票対象レースの最新データをクロールする
     print("# 投票対象レースの最新データをクロールする")
@@ -65,7 +65,7 @@ def main():
     place_id = df_race["place_id"].values[0]
     start_datetime = df_race["start_datetime"].dt.strftime("%Y%m%d").values[0]
 
-    s3_feed_url = f"s3://{AWS_S3_BUCKET}/feed/race_{race_id}.json"
+    s3_feed_url = f"s3://{AWS_S3_BUCKET}/feed/race_{race_id}_before.json"
     print(f"S3フィードURL: {s3_feed_url}")
     crawl_url = f"https://www.boatrace.jp/owpc/pc/race/racelist?rno={race_round}&jcd={place_id}&hd={start_datetime}"
     print(f"クロールURL: {crawl_url}")
@@ -128,7 +128,7 @@ def loop():
 
         prev_time = datetime.now()
 
-        main()
+        main_vote()
 
         df_racelist = pd.read_pickle("./output/df_racelist.pkl.gz").query("result_timestamp.isnull()")
 

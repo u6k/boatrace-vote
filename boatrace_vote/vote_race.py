@@ -86,7 +86,7 @@ def get_feed_data(df_arg_race):
     race_id = df_arg_race["race_id"].values[0]
 
     s3 = utils.S3Storage()
-    obj = s3.get_object(f"feed/race_{race_id}.json")
+    obj = s3.get_object(f"feed/race_{race_id}_before.json")
 
     with io.BytesIO(obj) as b:
         json_data = json.loads(b.getvalue())
@@ -198,7 +198,7 @@ def main():
     L.info(f"現在時刻: {current_datetime}")
 
     s3_pred_folder = os.environ["AWS_S3_PRED_FOLDER"]
-    L.info(f"S3投票データフォルダ: {s3_pred_folder}")
+    L.info(f"S3予測データフォルダ: {s3_pred_folder}")
 
     s3_vote_folder = os.environ["AWS_S3_VOTE_FOLDER"]
     L.info(f"S3投票データフォルダ: {s3_vote_folder}")
@@ -216,7 +216,7 @@ def main():
 
     if df_target_race is None:
         L.info("対象レースが存在しないため、処理を終了する")
-        sys.exit(1)
+        return
 
     race_id = df_target_race["race_id"].values[0]
 

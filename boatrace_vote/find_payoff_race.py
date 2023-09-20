@@ -9,7 +9,7 @@ L = utils.get_logger("find_payoff_race")
 
 
 def get_target_race(current_datetime, s3_vote_folder):
-    """投票対象レースを見つける
+    """清算対象レースを見つける
     """
 
     # レース一覧データを取得する
@@ -53,7 +53,7 @@ def output_parameter_files(df_arg_race, df_racelist):
     """
 
     if df_arg_race is not None:
-        # 投票対象レースが存在する場合、ファイル出力する
+        # 清算対象レースが存在する場合、ファイル出力する
         df_arg_race.to_csv("/var/output/df_payoff_race.csv")
         df_arg_race.to_pickle("/var/output/df_payoff_race.pkl.gz")
     else:

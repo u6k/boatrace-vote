@@ -1,7 +1,7 @@
 import io
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import pandas as pd
 import utils
@@ -23,26 +23,10 @@ def get_target_race(current_datetime, s3_vote_folder):
     L.debug("レース一覧データ")
     L.debug(df_racelist)
 
-    L.debug("現在時刻の1時間前後のレース")
-    start_t = current_datetime - timedelta(hours=1)
-    end_t = current_datetime + timedelta(hours=1)
-    df_tmp = df_racelist[(start_t <= df_racelist["start_datetime"]) & (df_racelist["start_datetime"] < end_t)]
-    L.debug(df_tmp)
-
-    # 未投票、現在時刻+5分より前、最新、のレースを特定する
-    df_target_race = df_racelist[df_racelist["vote_timestamp"].isnull()]
-
-    t = current_datetime + timedelta(minutes=5)
-    df_target_race = df_target_race[df_target_race["start_datetime"] < t]
-
-    if len(df_target_race) > 0:
-        df_target_race = df_target_race.tail(1)
-
-        L.debug("対象レース")
-        L.debug(df_target_race)
+    # ローカルストレージから投票対象レースを取得する
+    if os.path.isfile("/var/output/df_vote_race.pkl.gz"):
+        df_target_race = pd.read_pickle("/var/output/df_vote_race.pkl.gz")
     else:
-        L.debug("対象レースがない")
-
         df_target_race = None
 
     return df_target_race, df_racelist

@@ -5,6 +5,7 @@ from datetime import datetime
 
 import pandas as pd
 import utils
+from botocore.exceptions import ClientError
 
 L = utils.get_logger("payoff_race")
 
@@ -39,10 +40,16 @@ def get_vote_race(df_arg_race, s3_vote_folder):
     race_id = df_arg_race["race_id"].values[0]
 
     s3 = utils.S3Storage()
-    obj = s3.get_object(f"{s3_vote_folder}/df_vote_{race_id}.pkl.gz")
+    try:
+        obj = s3.get_object(f"{s3_vote_folder}/df_vote_{race_id}.pkl.gz")
 
-    with io.BytesIO(obj) as b:
-        df_vote = pd.read_pickle(b, compression="gzip")
+        with io.BytesIO(obj) as b:
+            df_vote = pd.read_pickle(b, compression="gzip")
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "NoSuchKey":
+            df_vote = None
+        else:
+            raise e
 
     return df_vote
 
@@ -76,8 +83,9 @@ def payoff_race(current_datetime, df_arg_racelist, df_arg_race, df_arg_odds, df_
 
     if df_arg_odds is None:
         # 中止になった場合、0で清算する
-        df_arg_vote["odds_fix"] = 0.0
-        df_arg_vote["payoff_amount"] = 0.0
+        if df_arg_vote is not None:
+            df_arg_vote["odds_fix"] = 0.0
+            df_arg_vote["payoff_amount"] = 0.0
 
         idx = df_arg_racelist[df_arg_racelist["race_id"] == race_id].index[0]
 
@@ -90,7 +98,7 @@ def payoff_race(current_datetime, df_arg_racelist, df_arg_race, df_arg_odds, df_
         # まだ結果が出ていない場合、処理をしない
         return None, df_arg_racelist
 
-    if len(df_arg_vote) == 0:
+    if df_arg_vote is None or len(df_arg_vote) == 0:
         # 舟券に投票しなかった場合、0で清算する
         idx = df_arg_racelist[df_arg_racelist["race_id"] == race_id].index[0]
 

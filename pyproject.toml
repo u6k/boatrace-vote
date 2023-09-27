@@ -12,6 +12,7 @@ python = "^3.11"
 boto3 = "^1.28.49"
 pandas = "^2.1.0"
 poethepoet = "^0.22.1"
+numpy = "^1.25"
 
 
 [tool.poetry.group.dev.dependencies]

@@ -40,8 +40,8 @@ def create_racelist(target_date, s3_pred_folder, s3_vote_folder):
 
     df_racelist["vote_timestamp"] = None
     df_racelist["vote_amount"] = None
-    df_racelist["result_timestamp"] = None
-    df_racelist["return_amount"] = None
+    df_racelist["payoff_timestamp"] = None
+    df_racelist["payoff_amount"] = None
 
     L.debug("レース一覧データ")
     L.debug(df_racelist)

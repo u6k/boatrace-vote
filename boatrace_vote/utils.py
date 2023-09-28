@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import re
 import subprocess
@@ -53,6 +54,11 @@ class S3Storage:
     def put_object(self, key, obj):
         self.s3_bucket_obj.Object(key).put(Body=obj)
 
+    def list_objects(self, filter):
+        objs = list(self.s3_bucket_obj.objects.filter(Prefix=filter))
+
+        return objs
+
 
 def get_racelist(s3_vote_folder):
     """S3ストレージからレース一覧データを取得する。
@@ -92,6 +98,34 @@ def put_racelist(df_arg_racelist, s3_vote_folder):
 
     # ついでにローカル・ストレージに保存する
     df_arg_racelist.to_csv(f"{os.environ['OUTPUT_DIR']}/df_racelist.csv")
+
+
+def put_vote(df_arg_vote, race_id, s3_vote_folder):
+    # 投票データをアップロードする
+    s3 = S3Storage()
+
+    with io.BytesIO() as b:
+        df_arg_vote.to_pickle(b, compression="gzip")
+        key = f"{s3_vote_folder}/df_vote_{race_id}.pkl.gz"
+
+        s3.put_object(key, b.getvalue())
+
+    # ついでにローカル・ストレージに保存する
+    df_arg_vote.to_csv(f"{os.environ['OUTPUT_DIR']}/df_vote_{race_id}.csv")
+
+
+def get_feed_data(df_arg_race, s3_feed_folder, feed_suffix="_before"):
+    # フィードjsonを読み込む
+    race_id = df_arg_race["race_id"].values[0]
+
+    s3 = S3Storage()
+    obj = s3.get_object(f"{s3_feed_folder}/race_{race_id}{feed_suffix}.json")
+
+    with io.BytesIO(obj) as b:
+        json_data = json.loads(b.getvalue())
+
+    # パースする
+    return parse_feed_json(json_data)
 
 
 #
@@ -197,6 +231,30 @@ def find_payoff_race(df_arg_racelist, current_datetime):
         df_race = None
 
     return df_race
+
+
+def get_unprocessed_racelist(df_arg_racelist, s3_feed_folder, target_column="vote_timestamp", feed_suffix="_before"):
+    # 未処理のレース
+    race_ids_unprocessed = df_arg_racelist.query("vote_timestamp.isnull()")["race_id"].values
+
+    # フィードデータ
+    s3 = S3Storage()
+    s3_objs = s3.list_objects(f"{s3_feed_folder}/race_")
+    s3_keys = [o.key for o in s3_objs]
+
+    # 未処理かつフィードデータが存在するレース
+    race_ids_target = []
+
+    for race_id in race_ids_unprocessed:
+        key = f"race_{race_id}{feed_suffix}.json"
+        result = list(filter(lambda k: key in k, s3_keys))
+
+        if len(result) > 0:
+            race_ids_target.append(race_id)
+
+    df_racelist_unprocessed = df_arg_racelist[df_arg_racelist["race_id"].isin(race_ids_target)]
+
+    return df_racelist_unprocessed
 
 
 #

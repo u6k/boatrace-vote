@@ -1,9 +1,13 @@
+import io
+import json
 import os
 import re
-from datetime import datetime
+import subprocess
+from datetime import datetime, timedelta
 from logging import config, getLogger
 
 import boto3
+import numpy as np
 import pandas as pd
 
 #
@@ -49,6 +53,290 @@ class S3Storage:
 
     def put_object(self, key, obj):
         self.s3_bucket_obj.Object(key).put(Body=obj)
+
+    def list_objects(self, filter):
+        objs = list(self.s3_bucket_obj.objects.filter(Prefix=filter))
+
+        return objs
+
+
+def get_racelist(s3_vote_folder):
+    """S3ストレージからレース一覧データを取得する。
+
+    :param s3_vote_folder: S3ストレージ上の投票データフォルダ
+    :returns: レース一覧データ
+    """
+
+    # レース一覧データを取得する
+    s3 = S3Storage()
+    obj = s3.get_object(f"{s3_vote_folder}/df_racelist.pkl.gz")
+
+    with io.BytesIO(obj) as b:
+        df_racelist = pd.read_pickle(b, compression="gzip")
+
+    # ついでにローカル・ストレージに保存する
+    df_racelist.to_csv(f"{os.environ['OUTPUT_DIR']}/df_racelist.csv")
+
+    return df_racelist
+
+
+def put_racelist(df_arg_racelist, s3_vote_folder):
+    """S3ストレージからレース一覧データを取得する。
+
+    :param df_arg_racelist: アップロードするレース一覧データ
+    :param s3_vote_folder: S3ストレージ上の投票データフォルダ
+    """
+
+    # レース一覧データをアップロードする
+    s3 = S3Storage()
+
+    with io.BytesIO() as b:
+        df_arg_racelist.to_pickle(b, compression="gzip")
+        key = f"{s3_vote_folder}/df_racelist.pkl.gz"
+
+        s3.put_object(key, b.getvalue())
+
+    # ついでにローカル・ストレージに保存する
+    df_arg_racelist.to_csv(f"{os.environ['OUTPUT_DIR']}/df_racelist.csv")
+
+
+def get_vote(race_id, s3_vote_folder):
+    s3 = S3Storage()
+    obj = s3.get_object(f"{s3_vote_folder}/df_vote_{race_id}.pkl.gz")
+
+    with io.BytesIO(obj) as b:
+        df_vote = pd.read_pickle(b, compression="gzip")
+
+    # ついでにローカル・ストレージに保存する
+    df_vote.to_csv(f"{os.environ['OUTPUT_DIR']}/df_vote_{race_id}.csv")
+
+    return df_vote
+
+
+def put_vote(df_arg_vote, race_id, s3_vote_folder):
+    # 投票データをアップロードする
+    s3 = S3Storage()
+
+    with io.BytesIO() as b:
+        df_arg_vote.to_pickle(b, compression="gzip")
+        key = f"{s3_vote_folder}/df_vote_{race_id}.pkl.gz"
+
+        s3.put_object(key, b.getvalue())
+
+    # ついでにローカル・ストレージに保存する
+    df_arg_vote.to_csv(f"{os.environ['OUTPUT_DIR']}/df_vote_{race_id}.csv")
+
+
+def get_feed_data(df_arg_race, s3_feed_folder, feed_suffix="_before"):
+    # フィードjsonを読み込む
+    race_id = df_arg_race["race_id"].values[0]
+
+    s3 = S3Storage()
+    obj = s3.get_object(f"{s3_feed_folder}/race_{race_id}{feed_suffix}.json")
+
+    with io.BytesIO(obj) as b:
+        json_data = json.loads(b.getvalue())
+
+    # パースする
+    return parse_feed_json(json_data)
+
+
+#
+# 計算系
+#
+
+def calc_dscore_by_race(df_arg, target_columns, is_standardization=False, is_drop=True):
+    """ 対象カラムについて、レースごとの偏差値(deviation score)を算出する
+
+    is_standardization=Trueを指定すると、偏差値ではなく標準化を行う。
+    """
+    df_tmp = df_arg.sort_values("race_id")
+
+    # display("型を変換する")
+    for target_column in target_columns:
+        df_tmp[target_column] = df_tmp[target_column].astype("float64")
+
+    # display("平均を算出する")
+    df_tmp_mean = df_tmp[["race_id"] + target_columns] \
+        .groupby("race_id", as_index=False) \
+        .mean()
+
+    df_tmp = pd.merge(df_tmp, df_tmp_mean, on=["race_id"], how="left", suffixes=["", "_mean"])
+
+    # display("標準偏差を算出する")
+    df_tmp_std = df_tmp[["race_id"] + target_columns] \
+        .groupby("race_id", as_index=False) \
+        .std()
+
+    df_tmp = pd.merge(df_tmp, df_tmp_std, on=["race_id"], how="left", suffixes=["", "_std"])
+
+    # display("偏差値を算出する")
+    if is_standardization:
+        a, b = 1.0, 0.0
+    else:
+        a, b = 10.0, 50.0
+
+    for target_column in target_columns:
+        df_tmp[target_column+"_dscore"] = (df_tmp[target_column] - df_tmp[target_column+"_mean"]) / df_tmp[target_column+"_std"] * a + b
+
+        # 全て同じ値の場合に偏差値がNaNになってしまうので補完する
+        df_tmp[target_column+"_dscore"].fillna(b, inplace=True)
+
+        # なぜかinfにある場合があるので補完する
+        df_tmp[target_column+"_dscore"].replace(np.inf, b, inplace=True)
+        df_tmp[target_column+"_dscore"].replace(-np.inf, b, inplace=True)
+
+        # display("不要カラムを削除する")
+        df_tmp.drop([target_column+"_mean", target_column+"_std"], axis=1, inplace=True)
+        if is_drop:
+            df_tmp.drop([target_column], axis=1, inplace=True)
+
+    return df_tmp
+
+
+def find_vote_race(df_arg_racelist, current_datetime):
+    """投票対象レース(直前レース)のレコードを取得する。
+
+    投票対象レースは、「未投票 and 現在時刻+5分より前 and 最新」という条件を満たすレースのこと。
+
+    :param df_arg_racelist: レース一覧データ
+    :param current_datetime: 現在時刻を表すdatetime
+    :returns: 対象レースのレコード
+    """
+
+    # 未投票のレースを抽出する
+    df_tmp = df_arg_racelist.sort_values("start_datetime")
+    df_tmp = df_tmp[df_tmp["vote_timestamp"].isnull()]
+
+    # 現在時刻+5分より前のレースを抽出する
+    t = current_datetime + timedelta(minutes=5)
+    df_race = df_tmp[df_tmp["start_datetime"] <= t]
+
+    if len(df_race) > 0:
+        df_race = df_race.tail(1)
+    else:
+        df_race = None
+
+    return df_race
+
+
+def find_payoff_race(df_arg_racelist, current_datetime):
+    """清算対象レース(直後レース)のレコードを取得する。
+
+    投票対象レースは、「未投票 and 現在時刻-10分より前 and 最新」という条件を満たすレースのこと。
+
+    :param df_arg_racelist: レース一覧データ
+    :param current_datetime: 現在時刻を表すdatetime
+    :returns: 対象レースのレコード
+    """
+
+    # 未投票のレースを抽出する
+    df_tmp = df_arg_racelist.sort_values("start_datetime")
+    df_tmp = df_tmp[df_tmp["payoff_timestamp"].isnull()]
+
+    # 現在時刻-10分より後のレースを抽出する
+    t = current_datetime - timedelta(minutes=10)
+    df_race = df_tmp[df_tmp["start_datetime"] <= t]
+
+    if len(df_race) > 0:
+        df_race = df_race.tail(1)
+    else:
+        df_race = None
+
+    return df_race
+
+
+def get_not_voted_racelist(df_arg_racelist, s3_feed_folder):
+    # 未投票のレース
+    race_ids_not_voted = df_arg_racelist.query("vote_timestamp.isnull()")["race_id"].values
+
+    # フィードデータ
+    s3 = S3Storage()
+    s3_objs = s3.list_objects(f"{s3_feed_folder}/race_")
+    s3_keys = [o.key for o in s3_objs]
+
+    # 未投票かつフィードデータが存在するレース
+    race_ids_target = []
+
+    for race_id in race_ids_not_voted:
+        key = f"race_{race_id}_before.json"
+        result = list(filter(lambda k: key in k, s3_keys))
+
+        if len(result) > 0:
+            race_ids_target.append(race_id)
+
+    df_racelist_not_voted = df_arg_racelist[df_arg_racelist["race_id"].isin(race_ids_target)]
+
+    return df_racelist_not_voted
+
+
+def get_not_paidoff_racelist(df_arg_racelist, s3_feed_folder):
+    # 投票済みかつ未清算のレース
+    race_ids_not_paidoff = df_arg_racelist.query("vote_timestamp.notnull() and payoff_timestamp.isnull()")["race_id"].values
+
+    # フィードデータ
+    s3 = S3Storage()
+    s3_objs = s3.list_objects(f"{s3_feed_folder}/race_")
+    s3_keys = [o.key for o in s3_objs]
+
+    # 投票済みかつ未清算かつフィードデータが存在するレース
+    race_ids_target = []
+
+    for race_id in race_ids_not_paidoff:
+        key = f"race_{race_id}_after.json"
+        result = list(filter(lambda k: key in k, s3_keys))
+
+        if len(result) > 0:
+            race_ids_target.append(race_id)
+
+    df_racelist_not_paidoff = df_arg_racelist[df_arg_racelist["race_id"].isin(race_ids_target)]
+
+    return df_racelist_not_paidoff
+
+
+def remaining_racelist(s3_vote_folder):
+    # レース一覧を取得する
+    df_racelist = get_racelist(s3_vote_folder)
+
+    # 残りのレースを抽出する
+    df_racelist = df_racelist.query("vote_timestamp.isnull() or payoff_timestamp.isnull()")
+
+    return df_racelist
+
+
+#
+# 外部プロセス系
+#
+
+def subprocess_crawl(crawl_url, s3_feed_url):
+    """クローラーコンテナを実行する。
+
+    :param crawl_url: クロール開始URL
+    :param s3_feed_url: クロール結果を出力するS3フィードURL
+    :returns: 終了コード、標準出力＋標準エラー出力
+    """
+
+    proc = subprocess.run([
+        "docker", "run", "--rm",
+        "-e", "TZ=Asia/Tokyo",
+        "-e", f"AWS_ENDPOINT_URL={os.environ['AWS_ENDPOINT_URL']}",
+        "-e", f"AWS_ACCESS_KEY_ID={os.environ['AWS_ACCESS_KEY_ID']}",
+        "-e", f"AWS_SECRET_ACCESS_KEY={os.environ['AWS_SECRET_ACCESS_KEY']}",
+        "-e", f"AWS_S3_CACHE_BUCKET={os.environ['AWS_S3_CACHE_BUCKET']}",
+        "-e", f"AWS_S3_CACHE_FOLDER={os.environ['AWS_S3_CACHE_FOLDER']}",
+        "-e", f"AWS_S3_FEED_URL={s3_feed_url}",
+        "-e", f"USER_AGENT={os.environ['USER_AGENT']}",
+        "-e", "RECACHE_RACE=True",
+        "-e", "RECACHE_DATA=False",
+        os.environ['DOCKER_IMAGE_CRAWLER'],
+        "scrapy", "crawl", "boatrace_spider", "-a", f"start_url={crawl_url}",
+    ], capture_output=True, text=True)
+
+    return_code = proc.returncode
+
+    return_str = proc.stdout + "\n" + proc.stderr
+
+    return return_code, return_str
 
 
 #

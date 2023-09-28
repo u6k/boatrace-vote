@@ -11,6 +11,7 @@ WORKDIR /var/myapp
 VOLUME /var/myapp
 
 COPY pyproject.toml poetry.lock ./
-RUN poetry install --no-root
+RUN poetry install --no-root && \
+    poetry self add poetry-dotenv-plugin
 
 CMD ["poetry", "help"]

@@ -294,6 +294,16 @@ def get_not_paidoff_racelist(df_arg_racelist, s3_feed_folder):
     return df_racelist_not_paidoff
 
 
+def remaining_racelist(s3_vote_folder):
+    # レース一覧を取得する
+    df_racelist = get_racelist(s3_vote_folder)
+
+    # 残りのレースを抽出する
+    df_racelist = df_racelist.query("vote_timestamp.isnull() or payoff_timestamp.isnull()")
+
+    return df_racelist
+
+
 #
 # 外部プロセス系
 #

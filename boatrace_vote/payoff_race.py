@@ -229,7 +229,10 @@ def payoff_race(df_arg_racelist, df_arg_race, df_arg_vote, df_arg_odds, df_arg_p
             on=["race_id", "bracket_number_1", "bracket_number_2", "bracket_number_3"], how="left",
         )
 
-    df_result["payoff"] = df_result["payoff"].fillna(0.0)
+    if len(df_result) > 0:
+        df_result["payoff"] = df_result["payoff"].fillna(0.0)
+    else:
+        df_result["payoff"] = 0.0
 
     #
     # 清算し、レース一覧に記録する

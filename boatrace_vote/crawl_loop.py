@@ -152,35 +152,13 @@ def crawl_race_after(s3_vote_folder, current_datetime):
     utils.put_racelist(df_racelist, s3_vote_folder)
 
 
-def remaining_racelist(s3_vote_folder, current_datetime):
-    L.info(f"#remaining_racelist: start: s3_vote_folder={s3_vote_folder}, current_datetime={current_datetime}")
-
-    #
-    # レース一覧を取得する
-    #
-    L.debug("# レース一覧を取得する")
-
-    df_racelist = utils.get_racelist(s3_vote_folder)
-
-    #
-    # 残りのレースを抽出する
-    #
-    L.debug("# 残りのレースを抽出する")
-
-    df_racelist = df_racelist.query("vote_timestamp.isnull() or payoff_timestamp.isnull()")
-
-    return df_racelist
-
-    pass
-
-
 def crawl_loop(s3_vote_folder):
     prev_datetime = datetime.now()
     while True:
         current_datetime = datetime.now()
 
         # レース一覧を取得して、全てのレースがクロール済みならbreakする
-        df_racelist = remaining_racelist(s3_vote_folder, current_datetime)
+        df_racelist = utils.remaining_racelist(s3_vote_folder)
         if len(df_racelist) == 0:
             L.info("全てのレースを処理した")
             break

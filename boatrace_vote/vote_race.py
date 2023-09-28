@@ -47,6 +47,7 @@ def merge_ticket_odds(df_arg_t, df_arg_f, df_arg_k, df_arg_2t, df_arg_2f, df_arg
 
     df_odds_t = df_arg_odds.query("bet_type==1")[[
         "race_id",
+        "bet_type",
         "bracket_number_1",
         "odds_1",
     ]].rename(columns={
@@ -70,6 +71,7 @@ def merge_ticket_odds(df_arg_t, df_arg_f, df_arg_k, df_arg_2t, df_arg_2f, df_arg
 
     df_odds_f = df_arg_odds.query("bet_type==2")[[
         "race_id",
+        "bet_type",
         "bracket_number_1",
         "odds_1",
         "odds_2",
@@ -94,6 +96,7 @@ def merge_ticket_odds(df_arg_t, df_arg_f, df_arg_k, df_arg_2t, df_arg_2f, df_arg
 
     df_odds_k = df_arg_odds.query("bet_type==3")[[
         "race_id",
+        "bet_type",
         "bracket_number_1",
         "bracket_number_2",
         "odds_1",
@@ -116,6 +119,7 @@ def merge_ticket_odds(df_arg_t, df_arg_f, df_arg_k, df_arg_2t, df_arg_2f, df_arg
 
     df_odds_2t = df_arg_odds.query("bet_type==4")[[
         "race_id",
+        "bet_type",
         "bracket_number_1",
         "bracket_number_2",
         "odds_1",
@@ -137,6 +141,7 @@ def merge_ticket_odds(df_arg_t, df_arg_f, df_arg_k, df_arg_2t, df_arg_2f, df_arg
 
     df_odds_2f = df_arg_odds.query("bet_type==5")[[
         "race_id",
+        "bet_type",
         "bracket_number_1",
         "bracket_number_2",
         "odds_1",
@@ -158,6 +163,7 @@ def merge_ticket_odds(df_arg_t, df_arg_f, df_arg_k, df_arg_2t, df_arg_2f, df_arg
 
     df_odds_3t = df_arg_odds.query("bet_type==6")[[
         "race_id",
+        "bet_type",
         "bracket_number_1",
         "bracket_number_2",
         "bracket_number_3",
@@ -180,6 +186,7 @@ def merge_ticket_odds(df_arg_t, df_arg_f, df_arg_k, df_arg_2t, df_arg_2f, df_arg
 
     df_odds_3f = df_arg_odds.query("bet_type==7")[[
         "race_id",
+        "bet_type",
         "bracket_number_1",
         "bracket_number_2",
         "bracket_number_3",

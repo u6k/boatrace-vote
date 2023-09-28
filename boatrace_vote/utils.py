@@ -100,6 +100,19 @@ def put_racelist(df_arg_racelist, s3_vote_folder):
     df_arg_racelist.to_csv(f"{os.environ['OUTPUT_DIR']}/df_racelist.csv")
 
 
+def get_vote(race_id, s3_vote_folder):
+    s3 = S3Storage()
+    obj = s3.get_object(f"{s3_vote_folder}/df_vote_{race_id}.pkl.gz")
+
+    with io.BytesIO(obj) as b:
+        df_vote = pd.read_pickle(b, compression="gzip")
+
+    # ついでにローカル・ストレージに保存する
+    df_vote.to_csv(f"{os.environ['OUTPUT_DIR']}/df_vote_{race_id}.csv")
+
+    return df_vote
+
+
 def put_vote(df_arg_vote, race_id, s3_vote_folder):
     # 投票データをアップロードする
     s3 = S3Storage()
@@ -234,7 +247,7 @@ def find_payoff_race(df_arg_racelist, current_datetime):
 
 
 def get_not_voted_racelist(df_arg_racelist, s3_feed_folder):
-    # 未処理のレース
+    # 未投票のレース
     race_ids_not_voted = df_arg_racelist.query("vote_timestamp.isnull()")["race_id"].values
 
     # フィードデータ
@@ -242,7 +255,7 @@ def get_not_voted_racelist(df_arg_racelist, s3_feed_folder):
     s3_objs = s3.list_objects(f"{s3_feed_folder}/race_")
     s3_keys = [o.key for o in s3_objs]
 
-    # 未処理かつフィードデータが存在するレース
+    # 未投票かつフィードデータが存在するレース
     race_ids_target = []
 
     for race_id in race_ids_not_voted:
@@ -255,6 +268,30 @@ def get_not_voted_racelist(df_arg_racelist, s3_feed_folder):
     df_racelist_not_voted = df_arg_racelist[df_arg_racelist["race_id"].isin(race_ids_target)]
 
     return df_racelist_not_voted
+
+
+def get_not_paidoff_racelist(df_arg_racelist, s3_feed_folder):
+    # 投票済みかつ未清算のレース
+    race_ids_not_paidoff = df_arg_racelist.query("vote_timestamp.notnull() and payoff_timestamp.isnull()")["race_id"].values
+
+    # フィードデータ
+    s3 = S3Storage()
+    s3_objs = s3.list_objects(f"{s3_feed_folder}/race_")
+    s3_keys = [o.key for o in s3_objs]
+
+    # 投票済みかつ未清算かつフィードデータが存在するレース
+    race_ids_target = []
+
+    for race_id in race_ids_not_paidoff:
+        key = f"race_{race_id}_after.json"
+        result = list(filter(lambda k: key in k, s3_keys))
+
+        if len(result) > 0:
+            race_ids_target.append(race_id)
+
+    df_racelist_not_paidoff = df_arg_racelist[df_arg_racelist["race_id"].isin(race_ids_target)]
+
+    return df_racelist_not_paidoff
 
 
 #

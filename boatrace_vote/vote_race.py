@@ -248,7 +248,7 @@ def main(s3_feed_folder, s3_pred_folder, s3_vote_folder):
     #
     L.info("# 投票対象レースを抽出する")
 
-    df_racelist_target = utils.get_unprocessed_racelist(df_racelist, s3_feed_folder, "vote_timestamp", "_before")
+    df_racelist_target = utils.get_not_voted_racelist(df_racelist, s3_feed_folder)
 
     L.debug("df_racelist_target")
     L.debug(df_racelist_target)

@@ -233,9 +233,9 @@ def find_payoff_race(df_arg_racelist, current_datetime):
     return df_race
 
 
-def get_unprocessed_racelist(df_arg_racelist, s3_feed_folder, target_column="vote_timestamp", feed_suffix="_before"):
+def get_not_voted_racelist(df_arg_racelist, s3_feed_folder):
     # 未処理のレース
-    race_ids_unprocessed = df_arg_racelist.query("vote_timestamp.isnull()")["race_id"].values
+    race_ids_not_voted = df_arg_racelist.query("vote_timestamp.isnull()")["race_id"].values
 
     # フィードデータ
     s3 = S3Storage()
@@ -245,16 +245,16 @@ def get_unprocessed_racelist(df_arg_racelist, s3_feed_folder, target_column="vot
     # 未処理かつフィードデータが存在するレース
     race_ids_target = []
 
-    for race_id in race_ids_unprocessed:
-        key = f"race_{race_id}{feed_suffix}.json"
+    for race_id in race_ids_not_voted:
+        key = f"race_{race_id}_before.json"
         result = list(filter(lambda k: key in k, s3_keys))
 
         if len(result) > 0:
             race_ids_target.append(race_id)
 
-    df_racelist_unprocessed = df_arg_racelist[df_arg_racelist["race_id"].isin(race_ids_target)]
+    df_racelist_not_voted = df_arg_racelist[df_arg_racelist["race_id"].isin(race_ids_target)]
 
-    return df_racelist_unprocessed
+    return df_racelist_not_voted
 
 
 #

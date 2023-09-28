@@ -212,7 +212,7 @@ def get_funds(df_arg_racelist):
     return funds
 
 
-def vote_expected_return_equal_payoff(df_arg_racelist, df_arg_race, df_arg_ticket):
+def vote_expected_return_equal_payoff(df_arg_ticket):
     """対象レースに期待値投票(均等払い戻し)(仮)する。
     """
 
@@ -230,11 +230,25 @@ def vote_expected_return_equal_payoff(df_arg_racelist, df_arg_race, df_arg_ticke
     df_vote["vote_amount"] = df_vote["vote_amount"] * (expected_payoff / df_vote["odds"])
     df_vote["vote_amount"] = df_vote["vote_amount"].map(lambda v: int(v))
 
-    # レース一覧に記録する
-    df_arg_racelist.at[df_arg_race.index[0], "vote_timestamp"] = datetime.now()
-    df_arg_racelist.at[df_arg_race.index[0], "vote_amount"] = df_vote["vote_amount"].sum()
+    return df_vote
 
-    return df_vote, df_arg_racelist
+
+def vote_pred_dscore(df_arg_ticket):
+    """対象レースに予測確率偏差値投票する。
+    """
+
+    pred_dscore_threshold = float(os.environ["PRED_DSCORE_THRESHOLD"])
+
+    # 予測確率偏差値を算出する
+    df_vote = utils.calc_dscore_by_race(df_arg_ticket, ["pred"], is_drop=False)
+
+    # 閾値以上のレコードを抽出する
+    df_vote = df_vote.query(f"pred_dscore>={pred_dscore_threshold}")
+
+    # 抽出したレコードに投票する
+    df_vote["vote_amount"] = 1
+
+    return df_vote
 
 
 def main(s3_feed_folder, s3_pred_folder, s3_vote_folder):
@@ -369,7 +383,11 @@ def main(s3_feed_folder, s3_pred_folder, s3_vote_folder):
     L.info("# 投票する")
 
     if df_race_odds is not None:
-        df_vote, df_racelist = vote_expected_return_equal_payoff(df_racelist, df_race, df_ticket_t)
+        # 期待値投票(均等払い戻し)
+        df_vote = vote_expected_return_equal_payoff(df_ticket_t)
+    # if df_race_odds is not None:
+    #     # 予測確率偏差値投票
+    #     df_vote = vote_pred_dscore(df_ticket_3t)
     else:
         L.debug("レースが中止となったため、投票しない")
 
@@ -377,8 +395,9 @@ def main(s3_feed_folder, s3_pred_folder, s3_vote_folder):
         df_vote["vote_amount"] = None
         df_vote = df_vote.dropna()
 
-        df_racelist.at[df_race.index[0], "vote_timestamp"] = datetime.now()
-        df_racelist.at[df_race.index[0], "vote_amount"] = 0
+    # レース一覧に記録する
+    df_racelist.at[df_race.index[0], "vote_timestamp"] = datetime.now()
+    df_racelist.at[df_race.index[0], "vote_amount"] = df_vote["vote_amount"].sum()
 
     L.debug("df_vote")
     L.debug(df_vote)

@@ -186,7 +186,7 @@ def crawl_loop(s3_vote_folder):
             break
 
         # 前回から60秒経過していなければ、スリープしてからcontinue
-        if (datetime.now() - prev_datetime).total_seconds() < 1:
+        if (datetime.now() - prev_datetime).total_seconds() < 60:
             L.debug("スキップ")
             time.sleep(10)
             continue

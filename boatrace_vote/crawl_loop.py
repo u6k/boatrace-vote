@@ -92,8 +92,8 @@ def crawl_race_before(s3_vote_folder, current_datetime):
     utils.put_racelist(df_racelist, s3_vote_folder)
 
 
-def crawl_race_after(s3_vote_folder, current_datetime):
-    L.info(f"#crawl_race_after: start: s3_vote_folder={s3_vote_folder}, current_datetime={current_datetime}")
+def crawl_race_after(s3_vote_folder, s3_feed_folder, current_datetime):
+    L.info(f"#crawl_race_after: start: s3_vote_folder={s3_vote_folder}, s3_feed_folder={s3_feed_folder}, current_datetime={current_datetime}")
 
     #
     # レース一覧を取得する
@@ -136,6 +136,15 @@ def crawl_race_after(s3_vote_folder, current_datetime):
     L.debug(f"return_str={return_str}")
 
     #
+    # 結果ページが正しくクロールできたか確認する
+    #
+    _, _, _, df_race_payoff, _ = utils.get_feed_data(df_race, s3_feed_folder, file_suffix)
+
+    if len(df_race_payoff) == 0:
+        L.debug("結果ページをクロールできていないので、破棄する")
+        return
+
+    #
     # レース一覧を更新する
     #
     L.debug("# レース一覧を更新する")
@@ -152,7 +161,7 @@ def crawl_race_after(s3_vote_folder, current_datetime):
     utils.put_racelist(df_racelist, s3_vote_folder)
 
 
-def crawl_loop(s3_vote_folder):
+def crawl_loop(s3_vote_folder, s3_feed_folder):
     prev_datetime = datetime.now()
     while True:
         current_datetime = datetime.now()
@@ -171,7 +180,7 @@ def crawl_loop(s3_vote_folder):
 
         # クロールする
         crawl_race_before(s3_vote_folder, current_datetime)
-        crawl_race_after(s3_vote_folder, current_datetime)
+        crawl_race_after(s3_vote_folder, s3_feed_folder, current_datetime)
 
         prev_datetime = datetime.now()
 
@@ -180,4 +189,7 @@ if __name__ == "__main__":
     s3_vote_folder = os.environ["AWS_S3_VOTE_FOLDER"]
     print(f"s3_vote_folder={s3_vote_folder}")
 
-    crawl_loop(s3_vote_folder)
+    s3_feed_folder = os.environ["AWS_S3_FEED_FOLDER"]
+    print(f"s3_feed_folder={s3_feed_folder}")
+
+    crawl_loop(s3_vote_folder, s3_feed_folder)

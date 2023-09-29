@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - [#10117: 投票データがない場合に清算処理がエラーになる](https://redmine.u6k.me/issues/10117)
+- [#10123: 払戻しデータのパースがエラーになる場合がある](https://redmine.u6k.me/issues/10123)
 
 ### Added
 

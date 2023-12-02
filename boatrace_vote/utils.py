@@ -2,7 +2,6 @@ import io
 import json
 import os
 import re
-import subprocess
 from datetime import datetime, timedelta
 from logging import config, getLogger
 
@@ -138,7 +137,7 @@ def get_feed_data(df_arg_race, s3_feed_folder, feed_suffix="_before"):
         json_data = json.loads(b.getvalue())
 
     # パースする
-    return parse_feed_json(json_data)
+    return parse_feed_json_to_dataframe(json_data)
 
 
 #
@@ -305,47 +304,12 @@ def remaining_racelist(s3_vote_folder):
 
 
 #
-# 外部プロセス系
+# フィードjson
 #
-
-def subprocess_crawl(crawl_url, s3_feed_url):
-    """クローラーコンテナを実行する。
-
-    :param crawl_url: クロール開始URL
-    :param s3_feed_url: クロール結果を出力するS3フィードURL
-    :returns: 終了コード、標準出力＋標準エラー出力
-    """
-
-    proc = subprocess.run([
-        "docker", "run", "--rm",
-        "-e", "TZ=Asia/Tokyo",
-        "-e", f"AWS_ENDPOINT_URL={os.environ['AWS_ENDPOINT_URL']}",
-        "-e", f"AWS_ACCESS_KEY_ID={os.environ['AWS_ACCESS_KEY_ID']}",
-        "-e", f"AWS_SECRET_ACCESS_KEY={os.environ['AWS_SECRET_ACCESS_KEY']}",
-        "-e", f"AWS_S3_CACHE_BUCKET={os.environ['AWS_S3_CACHE_BUCKET']}",
-        "-e", f"AWS_S3_CACHE_FOLDER={os.environ['AWS_S3_CACHE_FOLDER']}",
-        "-e", f"AWS_S3_FEED_URL={s3_feed_url}",
-        "-e", f"USER_AGENT={os.environ['USER_AGENT']}",
-        "-e", "RECACHE_RACE=True",
-        "-e", "RECACHE_DATA=False",
-        os.environ['DOCKER_IMAGE_CRAWLER'],
-        "scrapy", "crawl", "boatrace_spider", "-a", f"start_url={crawl_url}",
-    ], capture_output=True, text=True)
-
-    return_code = proc.returncode
-
-    return_str = proc.stdout + "\n" + proc.stderr
-
-    return return_code, return_str
-
-
-#
-# フィード関係
-#
-race_index_url_pattern = re.compile(r"https:\/\/www\.boatrace\.jp\/owpc\/pc\/race\/raceindex\?jcd=([0-9]{2})&hd=([0-9]{8})")
-
 
 def parse_race_index(json_data):
+    race_index_url_pattern = re.compile(r"https:\/\/www\.boatrace\.jp\/owpc\/pc\/race\/raceindex\?jcd=([0-9]{2})&hd=([0-9]{8})")
+
     i = {
         "place_id": json_data["place_id"][0],  # "place_id": ["01"],
         "place_name": json_data["place_name"][0],  # "place_name": ["桐生"]
@@ -381,18 +345,19 @@ def parse_race_index(json_data):
     # 親レース節IDとの紐づけ
     join_i = []
     for race_index_id in race_index_ids:
-        join_i.append({
-            "race_index_id": i["race_index_id"],
-            "child_id": race_index_id,
-        })
+        join_i.append(
+            {
+                "race_index_id": i["race_index_id"],
+                "child_id": race_index_id,
+            }
+        )
 
     return i, join_i
 
 
-race_url_pattern = re.compile(r"https:\/\/www\.boatrace\.jp\/owpc\/pc\/race\/racelist\?rno=([0-9]+)&jcd=([0-9]{2})&hd=([0-9]{8})")
-
-
 def parse_race_bracket(json_data):
+    race_url_pattern = re.compile(r"https:\/\/www\.boatrace\.jp\/owpc\/pc\/race\/racelist\?rno=([0-9]+)&jcd=([0-9]{2})&hd=([0-9]{8})")
+
     i = {
         "bracket_number": int(json_data["bracket_number"][0]),  # "bracket_number": ["２"]
     }
@@ -457,10 +422,10 @@ def parse_race_bracket(json_data):
     return i
 
 
-boat_color_pattern = re.compile(r"is-boatColor([0-9])")
-
-
 def parse_race_bracket_result(json_data):
+    boat_color_pattern = re.compile(r"is-boatColor([0-9])")
+    race_url_pattern = re.compile(r"https:\/\/www\.boatrace\.jp\/owpc\/pc\/race\/racelist\?rno=([0-9]+)&jcd=([0-9]{2})&hd=([0-9]{8})")
+
     i = {
         "bracket_number": int(json_data["bracket_number"][0]),  # "bracket_number": ["１"]
         "run_number": int(json_data["run_number"][0]),  # "run_number": [0]
@@ -513,10 +478,10 @@ def parse_race_bracket_result(json_data):
     return i
 
 
-course_length_pattern = re.compile(r"(.+?)([0-9]+)m")
-
-
 def parse_race_info(json_data):
+    course_length_pattern = re.compile(r"(.+?)([0-9]+)m")
+    race_url_pattern = re.compile(r"https:\/\/www\.boatrace\.jp\/owpc\/pc\/race\/racelist\?rno=([0-9]+)&jcd=([0-9]{2})&hd=([0-9]{8})")
+
     i = {}
 
     race_url_re = race_url_pattern.search(json_data["url"][0])  # "url": ["https://www.boatrace.jp/owpc/pc/race/racelist?rno=12&jcd=24&hd=20230731"]
@@ -540,11 +505,10 @@ def parse_race_info(json_data):
     return i
 
 
-race_result_url_pattern = re.compile(r"https:\/\/www\.boatrace\.jp\/owpc\/pc\/race\/raceresult\?rno=([0-9]+)&jcd=([0-9]{2})&hd=([0-9]{8})")
-result_time_pattern = re.compile(r"([0-9]+)\'([0-9]+)\"([0-9]+)")
-
-
 def parse_race_result(json_data):
+    race_result_url_pattern = re.compile(r"https:\/\/www\.boatrace\.jp\/owpc\/pc\/race\/raceresult\?rno=([0-9]+)&jcd=([0-9]{2})&hd=([0-9]{8})")
+    result_time_pattern = re.compile(r"([0-9]+)\'([0-9]+)\"([0-9]+)")
+
     i = {
         "bracket_number": int(json_data["bracket_number"][0]),  # "bracket_number": ["3"]
     }
@@ -591,10 +555,10 @@ def parse_race_result(json_data):
     return i
 
 
-start_time_pattern = re.compile(r"(\.[0-9]{2})(.*)")
-
-
 def parse_race_result_start(json_data):
+    start_time_pattern = re.compile(r"(\.[0-9]{2})(.*)")
+    race_result_url_pattern = re.compile(r"https:\/\/www\.boatrace\.jp\/owpc\/pc\/race\/raceresult\?rno=([0-9]+)&jcd=([0-9]{2})&hd=([0-9]{8})")
+
     i = {
         "bracket_number": int(json_data["bracket_number"][0]),  # "bracket_number": ["1"]
     }
@@ -626,13 +590,13 @@ def parse_race_result_start(json_data):
     return i
 
 
-payoff_bracket_number_3 = re.compile(r"([0-9])=([0-9])")
-payoff_bracket_number_4 = re.compile(r"([0-9])-([0-9])")
-payoff_bracket_number_6 = re.compile(r"([0-9])-([0-9])-([0-9])")
-payoff_bracket_number_7 = re.compile(r"([0-9])=([0-9])=([0-9])")
-
-
 def parse_race_payoff(json_data):
+    payoff_bracket_number_3 = re.compile(r"([0-9])=([0-9])")
+    payoff_bracket_number_4 = re.compile(r"([0-9])-([0-9])")
+    payoff_bracket_number_6 = re.compile(r"([0-9])-([0-9])-([0-9])")
+    payoff_bracket_number_7 = re.compile(r"([0-9])=([0-9])=([0-9])")
+    race_result_url_pattern = re.compile(r"https:\/\/www\.boatrace\.jp\/owpc\/pc\/race\/raceresult\?rno=([0-9]+)&jcd=([0-9]{2})&hd=([0-9]{8})")
+
     i = {}
 
     race_result_url_re = race_result_url_pattern.search(json_data["url"][0])  # "url": ["https://www.boatrace.jp/owpc/pc/race/raceresult?rno=12&jcd=24&hd=20230731#payoff"]
@@ -729,11 +693,10 @@ def parse_race_payoff(json_data):
     return i
 
 
-odds_url_pattern = re.compile(r"https:\/\/www\.boatrace\.jp\/owpc\/pc\/race\/(oddstf|oddsk|odds2tf|odds3t|odds3f)\?rno=([0-9]+)&jcd=([0-9]{2})&hd=([0-9]{8})(#oddst|#oddsf|#odds2t|#odds2f)?")
-odds_pattern = re.compile(r"([\.0-9]+)-([\.0-9]+)")
-
-
 def parse_race_odds(json_data):
+    odds_url_pattern = re.compile(r"https:\/\/www\.boatrace\.jp\/owpc\/pc\/race\/(oddstf|oddsk|odds2tf|odds3t|odds3f)\?rno=([0-9]+)&jcd=([0-9]{2})&hd=([0-9]{8})(#oddst|#oddsf|#odds2t|#odds2f)?")
+    odds_pattern = re.compile(r"([\.0-9]+)-([\.0-9]+)")
+
     if "odds" not in json_data:
         # レースが中止になった場合
         return None
@@ -790,10 +753,9 @@ def parse_race_odds(json_data):
     return i
 
 
-racer_id_pattern = re.compile(r"([0-9]{4})")
-
-
 def parse_racer_profile(json_data):
+    racer_id_pattern = re.compile(r"([0-9]{4})")
+
     if "racer_id" not in json_data:
         # データが存在しない場合
         return None
@@ -840,10 +802,10 @@ def parse_racer_profile(json_data):
     return i
 
 
-def parse_feed_json(json_data):
-    L = get_logger("utils.parse_feed_json")
+def parse_feed_json_to_dataframe(json_data):
+    L = get_logger("parse_feed_json_to_dataframe")
 
-    # jsonデータを変換する
+    # フィードjsonをdict配列に変換する
     race_bracket_items = []
     race_bracket_history_items = []
     race_info_items = []
@@ -900,72 +862,45 @@ def parse_feed_json(json_data):
             L.error(i)
             L.error(e)
 
-    # ファイルに保存する
+    # データフレームに変換する
     if len(race_bracket_items) > 0:
-        df_race_bracket = pd.DataFrame.from_dict(race_bracket_items) \
-            .drop_duplicates(subset=["race_id", "racer_id"]) \
-            .sort_values(["race_id", "racer_id"]) \
-            .reset_index(drop=True)
+        df_race_bracket = pd.DataFrame.from_dict(race_bracket_items).drop_duplicates(subset=["race_id", "racer_id"]).sort_values(["race_id", "racer_id"]).reset_index(drop=True)
     else:
         df_race_bracket = None
 
-    # NOTE: 使わないのでコメントアウト
-    # if len(race_bracket_history_items) > 0:
-    #     df_race_bracket_history = pd.DataFrame.from_dict(race_bracket_history_items) \
-    #         .drop_duplicates(subset=["race_id", "bracket_number", "run_number"]) \
-    #         .sort_values(["race_id", "bracket_number", "run_number"]) \
-    #         .reset_index(drop=True)
-    # else:
-    #     df_race_bracket_history = None
+    if len(race_bracket_history_items) > 0:
+        df_race_bracket_history = pd.DataFrame.from_dict(race_bracket_history_items).drop_duplicates(subset=["race_id", "bracket_number", "run_number"]).sort_values(["race_id", "bracket_number", "run_number"]).reset_index(drop=True)
+    else:
+        df_race_bracket_history = None
 
     if len(race_info_items) > 0:
-        df_race_info = pd.DataFrame.from_dict(race_info_items) \
-            .drop_duplicates(subset=["race_id"]) \
-            .sort_values(["race_id"]) \
-            .reset_index(drop=True)
+        df_race_info = pd.DataFrame.from_dict(race_info_items).drop_duplicates(subset=["race_id"]).sort_values(["race_id"]).reset_index(drop=True)
     else:
         df_race_info = None
 
     if len(race_result_items) > 0:
-        df_race_result = pd.DataFrame.from_dict(race_result_items) \
-            .drop_duplicates(subset=["race_id", "bracket_number"]) \
-            .sort_values(["race_id", "bracket_number"]) \
-            .reset_index(drop=True)
+        df_race_result = pd.DataFrame.from_dict(race_result_items).drop_duplicates(subset=["race_id", "bracket_number"]).sort_values(["race_id", "bracket_number"]).reset_index(drop=True)
     else:
         df_race_result = None
 
-    # NOTE: 使わないのでコメントアウト
-    # if len(race_result_start_items) > 0:
-    #     df_race_result_start = pd.DataFrame.from_dict(race_result_start_items) \
-    #         .drop_duplicates(subset=["race_id", "bracket_number"]) \
-    #         .sort_values(["race_id", "bracket_number"]) \
-    #         .reset_index(drop=True)
-    # else:
-    #     df_race_result_start = None
+    if len(race_result_start_items) > 0:
+        df_race_result_start = pd.DataFrame.from_dict(race_result_start_items).drop_duplicates(subset=["race_id", "bracket_number"]).sort_values(["race_id", "bracket_number"]).reset_index(drop=True)
+    else:
+        df_race_result_start = None
 
     if len(race_payoff_items) > 0:
-        df_race_payoff = pd.DataFrame.from_dict(race_payoff_items) \
-            .drop_duplicates(subset=["race_id", "bracket_number_1", "bracket_number_2", "bracket_number_3"]) \
-            .sort_values(["race_id", "bracket_number_1", "bracket_number_2", "bracket_number_3"]) \
-            .reset_index(drop=True)
+        df_race_payoff = pd.DataFrame.from_dict(race_payoff_items).drop_duplicates(subset=["race_id", "bracket_number_1", "bracket_number_2", "bracket_number_3"]).sort_values(["race_id", "bracket_number_1", "bracket_number_2", "bracket_number_3"]).reset_index(drop=True)
     else:
         df_race_payoff = None
 
     if len(race_odds_items) > 0:
-        df_race_odds = pd.DataFrame.from_dict(race_odds_items) \
-            .drop_duplicates(subset=["race_id", "bet_type", "bracket_number_1", "bracket_number_2", "bracket_number_3"]) \
-            .sort_values(["race_id", "bet_type", "bracket_number_1", "bracket_number_2", "bracket_number_3"]) \
-            .reset_index(drop=True)
+        df_race_odds = pd.DataFrame.from_dict(race_odds_items).drop_duplicates(subset=["race_id", "bet_type", "bracket_number_1", "bracket_number_2", "bracket_number_3"]).sort_values(["race_id", "bet_type", "bracket_number_1", "bracket_number_2", "bracket_number_3"]).reset_index(drop=True)
     else:
         df_race_odds = None
 
-    # NOTE: 使わないのでコメントアウト
-    # if len(racer_items) > 0:
-    #     df_racer = pd.DataFrame.from_dict(racer_items) \
-    #         .drop_duplicates(subset=["racer_id"]) \
-    #         .sort_values(["racer_id"]) \
-    #         .reset_index(drop=True)
-    # else:
-    #     df_racer = None
+    if len(racer_items) > 0:
+        df_racer = pd.DataFrame.from_dict(racer_items).drop_duplicates(subset=["racer_id"]).sort_values(["racer_id"]).reset_index(drop=True)
+    else:
+        df_racer = None
 
-    return df_race_bracket, df_race_info, df_race_result, df_race_payoff, df_race_odds
+    return df_race_bracket, df_race_bracket_history, df_race_info, df_race_result, df_race_result_start, df_race_payoff, df_race_odds, df_racer

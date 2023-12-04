@@ -38,8 +38,8 @@ def put_racelist(s3_client, df_arg, arg_vote_folder):
     return key_base + ".joblib"
 
 
-def get_racelist(s3_client, racelist_folder, target_date):
-    key = f"{racelist_folder}/{target_date.strftime('%Y%m%d')}/df_racelist.joblib"
+def get_racelist(s3_client, arg_vote_folder):
+    key = f"{arg_vote_folder}/df_racelist.joblib"
 
     with io.BytesIO(s3_client.get_object(key)) as b:
         df = joblib.load(b)

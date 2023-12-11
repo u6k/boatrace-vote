@@ -2,7 +2,6 @@ import io
 import json
 import os
 import re
-import time
 from datetime import datetime
 
 import create_racelist
@@ -36,7 +35,7 @@ def get_crawl_racelist(s3_client, arg_racelist_folder):
 
 
 def get_crawl_race_before_5min(s3_client, arg_racelist_folder, arg_race_id):
-    key_re = re.fullmatch(r"^s3://(\w+)/(.*)$", arg_racelist_folder + f"/race_{arg_race_id}_before_5min.json")
+    key_re = re.fullmatch(r"^s3://(\w+)/(.*)$", arg_racelist_folder + f"/race_{arg_race_id}_before_5minutes.json")
     s3_key = key_re.group(2)
 
     with io.BytesIO(s3_client.get_object(s3_key)) as b:
@@ -150,17 +149,12 @@ def vote_race(s3_vote_folder, s3_pred_folder):
         target_race_id = df_not_voted_racelist["race_id"].values[0]
         L.debug(f"target_race_id={target_race_id}")
 
-        df_crawl_target_race = df_crawl_racelist[df_crawl_racelist["race_id"] == target_race_id]
+        df_crawl_target_race = df_crawl_racelist.query(f"race_id=='{target_race_id}' and diff_minutes==5")
         L.debug(f"df_crawl_target_race={df_crawl_target_race.to_dict(orient='records')}")
 
         if len(df_crawl_target_race) == 0:
             L.debug("そもそも対象レースがクロール一覧に存在しない")
             df_racelist.loc[df_racelist["race_id"] == target_race_id, "vote_timestamp"] = datetime.now()
-            continue
-
-        if df_crawl_target_race["crawl_timestamp_before_5min"].values[0] is None:
-            L.debug("対象レースの5分前クロールデータが無い")
-            time.sleep(10)
             continue
 
         #

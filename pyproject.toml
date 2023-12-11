@@ -45,3 +45,4 @@ test = "pytest"
 
 create_racelist = "python boatrace_vote/create_racelist.py"
 vote_race = "python boatrace_vote/vote_race.py"
+vote_result = "python boatrace_vote/vote_result.py"

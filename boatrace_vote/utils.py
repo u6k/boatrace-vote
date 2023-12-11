@@ -51,6 +51,12 @@ class S3Storage:
     def put_object(self, key, obj):
         self.s3_bucket_obj.Object(key).put(Body=obj)
 
+    def upload_file(self, file_path, key):
+        self.s3_bucket_obj.upload_file(file_path, key)
+
+    def download_file(self, key, file_path):
+        self.s3_bucket_obj.download_file(key, file_path)
+
     def list_objects(self, filter):
         objs = list(self.s3_bucket_obj.objects.filter(Prefix=filter))
 

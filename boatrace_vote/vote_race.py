@@ -1,434 +1,208 @@
 import io
+import json
 import os
+import re
 from datetime import datetime
 
+import create_racelist
+import joblib
 import pandas as pd
 import utils
 
-L = utils.get_logger("vote_race")
+#
+# S3操作
+#
 
 
-def get_pred_tickets(s3_pred_folder, df_arg_race):
-    """舟券予測データを取得する。
-    """
+def get_pred(s3_client, arg_pred_url):
+    key_re = re.fullmatch(r"^s3://(\w+)/(.*)$", arg_pred_url)
+    s3_key = key_re.group(2)
 
-    s3 = utils.S3Storage()
+    with io.BytesIO(s3_client.get_object(s3_key)) as b:
+        df = joblib.load(b)
 
-    race_id = df_arg_race["race_id"].values[0]
-
-    def _read_ticket(key):
-        obj = s3.get_object(key)
-
-        with io.BytesIO(obj) as b:
-            df_tmp = pd.read_pickle(b, compression="gzip")
-
-        df_tmp = df_tmp[df_tmp["race_id"] == race_id]
-
-        return df_tmp
-
-    df_ticket_t = _read_ticket(f"{s3_pred_folder}/df_ticket_t.pkl.gz")
-    df_ticket_f = _read_ticket(f"{s3_pred_folder}/df_ticket_f.pkl.gz")
-    df_ticket_k = _read_ticket(f"{s3_pred_folder}/df_ticket_k.pkl.gz")
-    df_ticket_2t = _read_ticket(f"{s3_pred_folder}/df_ticket_2t.pkl.gz")
-    df_ticket_2f = _read_ticket(f"{s3_pred_folder}/df_ticket_2f.pkl.gz")
-    df_ticket_3t = _read_ticket(f"{s3_pred_folder}/df_ticket_3t.pkl.gz")
-    df_ticket_3f = _read_ticket(f"{s3_pred_folder}/df_ticket_3f.pkl.gz")
-
-    return df_ticket_t, df_ticket_f, df_ticket_k, df_ticket_2t, df_ticket_2f, df_ticket_3t, df_ticket_3f
+    return df
 
 
-def merge_ticket_odds(df_arg_t, df_arg_f, df_arg_k, df_arg_2t, df_arg_2f, df_arg_3t, df_arg_3f, df_arg_odds):
-    # 単勝
-    df_tmp_t = df_arg_t.drop([
-        "odds_1",
-        "odds",
-        "payoff",
-    ], axis=1)
+def get_crawl_racelist(s3_client, arg_racelist_folder):
+    key_re = re.fullmatch(r"^s3://(\w+)/(.*)$", arg_racelist_folder + "/df_racelist.joblib")
+    s3_key = key_re.group(2)
 
-    df_odds_t = df_arg_odds.query("bet_type==1")[[
-        "race_id",
-        "bet_type",
-        "bracket_number_1",
-        "odds_1",
-    ]].rename(columns={
-        "bracket_number_1": "bracket_number",
-    })
+    with io.BytesIO(s3_client.get_object(s3_key)) as b:
+        df = joblib.load(b)
 
-    df_odds_t["odds"] = df_odds_t["odds_1"]
+    return df
 
-    df_result_t = pd.merge(
-        df_tmp_t, df_odds_t,
-        on=["race_id", "bracket_number"], how="left",
+
+def get_crawl_race_before_5min(s3_client, arg_racelist_folder, arg_race_id):
+    key_re = re.fullmatch(r"^s3://(\w+)/(.*)$", arg_racelist_folder + f"/race_{arg_race_id}_before_5minutes.json")
+    s3_key = key_re.group(2)
+
+    with io.BytesIO(s3_client.get_object(s3_key)) as b:
+        json_data = json.load(b)
+
+    _, _, _, _, _, _, df_race_odds, _ = utils.parse_feed_json_to_dataframe(json_data)
+
+    return df_race_odds
+
+
+def put_vote(s3_client, df_arg, arg_race_id, arg_vote_folder):
+    key = f"{arg_vote_folder}/vote_{arg_race_id}.joblib"
+
+    with io.BytesIO() as b:
+        joblib.dump(df_arg, b, compress=True)
+
+        s3_client.put_object(key, b.getvalue())
+
+
+#
+# レース関連
+#
+
+def merge_pred_and_odds(df_arg_pred, df_arg_odds, arg_race_id):
+    df_vote = pd.merge(
+        df_arg_pred, df_arg_odds,
+        on=["race_id", "bet_type", "bracket_number_1", "bracket_number_2", "bracket_number_3"],
+        how="left",
     )
 
-    # 複勝
-    df_tmp_f = df_arg_f.drop([
-        "odds_1",
-        "odds_2",
-        "odds",
-        "payoff",
-    ], axis=1)
+    df_vote = df_vote[df_vote["race_id"] == arg_race_id]
 
-    df_odds_f = df_arg_odds.query("bet_type==2")[[
-        "race_id",
-        "bet_type",
-        "bracket_number_1",
-        "odds_1",
-        "odds_2",
-    ]].rename(columns={
-        "bracket_number_1": "bracket_number",
-    })
-
-    df_odds_f["odds"] = df_odds_f["odds_1"]
-
-    df_result_f = pd.merge(
-        df_tmp_f, df_odds_f,
-        on=["race_id", "bracket_number"], how="left",
-    )
-
-    # 拡張複
-    df_tmp_k = df_arg_k.drop([
-        "odds_1",
-        "odds_2",
-        "odds",
-        "payoff",
-    ], axis=1)
-
-    df_odds_k = df_arg_odds.query("bet_type==3")[[
-        "race_id",
-        "bet_type",
-        "bracket_number_1",
-        "bracket_number_2",
-        "odds_1",
-        "odds_2",
-    ]]
-
-    df_odds_k["odds"] = df_odds_k["odds_1"]
-
-    df_result_k = pd.merge(
-        df_tmp_k, df_odds_k,
-        on=["race_id", "bracket_number_1", "bracket_number_2"], how="left",
-    )
-
-    # 2連単
-    df_tmp_2t = df_arg_2t.drop([
-        "odds_1",
-        "odds",
-        "payoff",
-    ], axis=1)
-
-    df_odds_2t = df_arg_odds.query("bet_type==4")[[
-        "race_id",
-        "bet_type",
-        "bracket_number_1",
-        "bracket_number_2",
-        "odds_1",
-    ]]
-
-    df_odds_2t["odds"] = df_odds_2t["odds_1"]
-
-    df_result_2t = pd.merge(
-        df_tmp_2t, df_odds_2t,
-        on=["race_id", "bracket_number_1", "bracket_number_2"], how="left",
-    )
-
-    # 2連複
-    df_tmp_2f = df_arg_2f.drop([
-        "odds_1",
-        "odds",
-        "payoff",
-    ], axis=1)
-
-    df_odds_2f = df_arg_odds.query("bet_type==5")[[
-        "race_id",
-        "bet_type",
-        "bracket_number_1",
-        "bracket_number_2",
-        "odds_1",
-    ]]
-
-    df_odds_2f["odds"] = df_odds_2f["odds_1"]
-
-    df_result_2f = pd.merge(
-        df_tmp_2f, df_odds_2f,
-        on=["race_id", "bracket_number_1", "bracket_number_2"], how="left",
-    )
-
-    # 3連単
-    df_tmp_3t = df_arg_3t.drop([
-        "odds_1",
-        "odds",
-        "payoff",
-    ], axis=1)
-
-    df_odds_3t = df_arg_odds.query("bet_type==6")[[
-        "race_id",
-        "bet_type",
-        "bracket_number_1",
-        "bracket_number_2",
-        "bracket_number_3",
-        "odds_1",
-    ]]
-
-    df_odds_3t["odds"] = df_odds_3t["odds_1"]
-
-    df_result_3t = pd.merge(
-        df_tmp_3t, df_odds_3t,
-        on=["race_id", "bracket_number_1", "bracket_number_2", "bracket_number_3"], how="left",
-    )
-
-    # 3連複
-    df_tmp_3f = df_arg_3f.drop([
-        "odds_1",
-        "odds",
-        "payoff",
-    ], axis=1)
-
-    df_odds_3f = df_arg_odds.query("bet_type==7")[[
-        "race_id",
-        "bet_type",
-        "bracket_number_1",
-        "bracket_number_2",
-        "bracket_number_3",
-        "odds_1",
-    ]]
-
-    df_odds_3f["odds"] = df_odds_3f["odds_1"]
-
-    df_result_3f = pd.merge(
-        df_tmp_3f, df_odds_3f,
-        on=["race_id", "bracket_number_1", "bracket_number_2", "bracket_number_3"], how="left",
-    )
-
-    return df_result_t, df_result_f, df_result_k, df_result_2t, df_result_2f, df_result_3t, df_result_3f
+    return df_vote
 
 
-def get_funds(df_arg_racelist):
-    """残高を取得する。
-    """
-
-    funds = df_arg_racelist["payoff_amount"].sum() - df_arg_racelist["vote_amount"].sum()
-
-    return funds
-
-
-def vote_expected_return_equal_payoff(df_arg_ticket):
+def vote__expected_return(df_arg_vote):
     """対象レースに期待値投票(均等払い戻し)(仮)する。
     """
 
     pred_threshold = float(os.environ["PRED_THRESHOLD"])
     expected_return_threshold = float(os.environ["EXPECTED_RETURN_THRESHOLD"])
-    expected_payoff = float(os.environ["EXPECTED_PAYOFF"])
+    odds_rank_threshold = int(os.environ["ODDS_RANK_THRESHOLD"])
+
+    df_vote = df_arg_vote.copy()
+
+    # オッズ順、期待値を算出する
+    df_vote["odds__rank"] = df_vote["odds_1"].rank(method="dense")
+    df_vote["expected_return"] = df_vote["pred_ticket"] * df_vote["odds_1"]
 
     # 投票対象の舟券を抽出する
-    df_vote = df_arg_ticket[df_arg_ticket["pred_prob"] >= pred_threshold]
+    df_vote = df_vote.query(f"pred_ticket>={pred_threshold} and expected_return>={expected_return_threshold} and odds__rank>{odds_rank_threshold}")
 
-    # 期待値を算出して、投票量を決定する
-    df_vote["expected_return"] = df_vote["odds"] * df_vote["pred_prob"]
-
-    df_vote["vote_amount"] = df_vote["expected_return"].map(lambda r: 1 if r >= expected_return_threshold else 0)
-    df_vote["vote_amount"] = df_vote["vote_amount"] * (expected_payoff / df_vote["odds"])
-    df_vote["vote_amount"] = df_vote["vote_amount"].map(lambda v: int(v))
-
-    return df_vote
-
-
-def vote_pred_dscore(df_arg_ticket):
-    """対象レースに予測確率偏差値投票する。
-    """
-
-    pred_dscore_threshold = float(os.environ["PRED_DSCORE_THRESHOLD"])
-
-    # 予測確率偏差値を算出する
-    df_vote = utils.calc_dscore_by_race(df_arg_ticket, ["pred"], is_drop=False)
-
-    # 閾値以上のレコードを抽出する
-    df_vote = df_vote.query(f"pred_dscore>={pred_dscore_threshold}")
-
-    # 抽出したレコードに投票する
+    # 舟券に投票する
     df_vote["vote_amount"] = 1
 
     return df_vote
 
 
-def main(s3_feed_folder, s3_pred_folder, s3_vote_folder):
+def upload_vote(s3_client, df_arg_racelist, df_arg_vote, arg_race_id, arg_vote_folder):
+    create_racelist.put_racelist(s3_client, df_arg_racelist, arg_vote_folder)
+
+    if len(df_arg_vote) > 0:
+        put_vote(s3_client, df_arg_vote, arg_race_id, arg_vote_folder)
+
+
+def vote_race(s3_vote_folder, s3_pred_folder):
     """投票アクションのメイン処理。
     """
 
-    #
-    # レース一覧データを取得する
+    L = utils.get_logger("vote_race")
+    s3_client = utils.S3Storage()
+
     #
     L.info("# レース一覧データを取得する")
+    #
 
-    df_racelist = utils.get_racelist(s3_vote_folder)
-
+    df_racelist = create_racelist.get_racelist(s3_client, s3_vote_folder)
     L.debug(df_racelist)
 
-    #
-    # 投票対象レースを抽出する
-    #
-    L.info("# 投票対象レースを抽出する")
-
-    df_racelist_target = utils.get_not_voted_racelist(df_racelist, s3_feed_folder)
-
-    L.debug("df_racelist_target")
-    L.debug(df_racelist_target)
-
-    if len(df_racelist_target) == 0:
-        L.debug("投票対象レースがない")
-        return
-
-    df_race = df_racelist_target.tail(1)
-    race_id = df_race["race_id"].values[0]
-
-    L.debug("df_race")
-    L.debug(df_race)
-
-    L.debug("race_id")
-    L.debug(race_id)
-
-    #
-    # 舟券予測データを取得する
     #
     L.info("# 舟券予測データを取得する")
-
-    df_ticket_t, df_ticket_f, df_ticket_k, df_ticket_2t, df_ticket_2f, df_ticket_3t, df_ticket_3f = get_pred_tickets(s3_pred_folder, df_race)
-
-    L.debug("df_ticket_t")
-    L.debug(df_ticket_t)
-
-    L.debug("df_ticket_f")
-    L.debug(df_ticket_f)
-
-    L.debug("df_ticket_k")
-    L.debug(df_ticket_k)
-
-    L.debug("df_ticket_2t")
-    L.debug(df_ticket_2t)
-
-    L.debug("df_ticket_2f")
-    L.debug(df_ticket_2f)
-
-    L.debug("df_ticket_3t")
-    L.debug(df_ticket_3t)
-
-    L.debug("df_ticket_3f")
-    L.debug(df_ticket_3f)
-
     #
-    # フィードjsonからレースデータを取得する
-    #
-    L.info("# フィードjsonからレースデータを取得する")
 
-    df_race_bracket, df_race_info, df_race_result, df_race_payoff, df_race_odds = utils.get_feed_data(df_race, s3_feed_folder, "_before")
+    df_pred_ticket = get_pred(s3_client, s3_pred_url)
+    L.debug(df_pred_ticket)
 
-    L.debug("df_race_bracket")
-    L.debug(df_race_bracket)
+    while True:
+        #
+        L.info("# 全レースの投票が終了した場合、ループを抜ける")
+        #
 
-    L.debug("df_race_info")
-    L.debug(df_race_info)
+        df_not_voted_racelist = df_racelist[df_racelist["vote_timestamp"].isnull()]
 
-    L.debug("df_race_result")
-    L.debug(df_race_result)
+        if len(df_not_voted_racelist) == 0:
+            L.debug("全レースに投票したので、ループを終了する")
+            break
 
-    L.debug("df_race_payoff")
-    L.debug(df_race_payoff)
+        L.debug(df_not_voted_racelist)
 
-    L.debug("df_race_odds")
-    L.debug(df_race_odds)
+        #
+        L.info("# クロール一覧データを取得する")
+        #
 
-    #
-    # 舟券予測データとオッズデータを結合する
-    #
-    L.info("# 舟券予測データとオッズデータを結合する")
+        df_crawl_racelist = get_crawl_racelist(s3_client, s3_racelist_folder)
+        L.debug(df_crawl_racelist)
 
-    if df_race_odds is not None:
-        df_ticket_t, df_ticket_f, df_ticket_k, df_ticket_2t, df_ticket_2f, df_ticket_3t, df_ticket_3f = merge_ticket_odds(df_ticket_t, df_ticket_f, df_ticket_k, df_ticket_2t, df_ticket_2f, df_ticket_3t, df_ticket_3f, df_race_odds)
-    else:
-        L.debug("レースが中止となったため、マージしない")
+        #
+        L.info("# 5分前データがあり、未投票のレースを抽出する")
+        #
 
-    L.debug("df_ticket_t")
-    L.debug(df_ticket_t)
+        target_race_id = df_not_voted_racelist["race_id"].values[0]
+        L.debug(f"target_race_id={target_race_id}")
 
-    L.debug("df_ticket_f")
-    L.debug(df_ticket_f)
+        df_crawl_target_race = df_crawl_racelist.query(f"race_id=='{target_race_id}' and diff_minutes==5")
+        L.debug(f"df_crawl_target_race={df_crawl_target_race.to_dict(orient='records')}")
 
-    L.debug("df_ticket_k")
-    L.debug(df_ticket_k)
+        if len(df_crawl_target_race) == 0:
+            L.debug("そもそも対象レースがクロール一覧に存在しない")
+            df_racelist.loc[df_racelist["race_id"] == target_race_id, "vote_timestamp"] = datetime.now()
+            continue
 
-    L.debug("df_ticket_2t")
-    L.debug(df_ticket_2t)
+        #
+        L.info("# 対象レースの5分前クロールデータを取得する")
+        #
 
-    L.debug("df_ticket_2f")
-    L.debug(df_ticket_2f)
+        df_race_odds = get_crawl_race_before_5min(s3_client, s3_racelist_folder, target_race_id)
+        L.debug(df_race_odds)
 
-    L.debug("df_ticket_3t")
-    L.debug(df_ticket_3t)
+        #
+        L.info("# 対象レースの舟券予測データと5分前クロールデータを結合する")
+        #
 
-    L.debug("df_ticket_3f")
-    L.debug(df_ticket_3f)
+        df_vote = merge_pred_and_odds(df_pred_ticket, df_race_odds, target_race_id)
+        L.debug(df_vote)
 
-    #
-    # 残高を確認する
-    #
-    L.info("# 残高を確認する")
+        #
+        L.info("# 投票する")
+        #
 
-    funds = get_funds(df_racelist)
+        df_vote = vote__expected_return(df_vote)
+        L.debug(df_vote)
 
-    L.info(f"残高: {funds}")
+        df_racelist.loc[df_racelist["race_id"] == target_race_id, "vote_timestamp"] = datetime.now()
 
-    #
-    # 投票する
-    #
-    L.info("# 投票する")
+        #
+        L.info("# 投票結果データと更新後レース一覧データをアップロードする")
+        #
 
-    if df_race_odds is not None:
-        # 期待値投票(均等払い戻し)
-        df_vote = vote_expected_return_equal_payoff(df_ticket_t)
-    # if df_race_odds is not None:
-    #     # 予測確率偏差値投票
-    #     df_vote = vote_pred_dscore(df_ticket_3t)
-    else:
-        L.debug("レースが中止となったため、投票しない")
-
-        df_vote = df_ticket_t.copy()
-        df_vote["vote_amount"] = None
-        df_vote = df_vote.dropna()
-
-    # レース一覧に記録する
-    df_racelist.at[df_race.index[0], "vote_timestamp"] = datetime.now()
-    df_racelist.at[df_race.index[0], "vote_amount"] = df_vote["vote_amount"].sum()
-
-    L.debug("df_vote")
-    L.debug(df_vote)
-
-    L.debug("df_racelist")
-    L.debug(df_racelist)
-    L.debug(df_racelist.loc[df_race.index[0]])
-
-    #
-    # 投票データをアップロードする
-    #
-    L.info("# 投票データをアップロードする")
-
-    utils.put_racelist(df_racelist, s3_vote_folder)
-    utils.put_vote(df_vote, race_id, s3_vote_folder)
+        upload_vote(s3_client, df_racelist, df_vote, target_race_id, s3_vote_folder)
 
 
 if __name__ == "__main__":
+    L = utils.get_logger("main")
+
     #
     # 設定を取得する
     #
-    s3_feed_folder = os.environ["AWS_S3_FEED_FOLDER"]
-    L.info(f"S3フィードデータフォルダ: {s3_feed_folder}")
-
-    s3_pred_folder = os.environ["AWS_S3_PRED_FOLDER"]
-    L.info(f"S3予測データフォルダ: {s3_pred_folder}")
-
     s3_vote_folder = os.environ["AWS_S3_VOTE_FOLDER"]
     L.info(f"S3投票データフォルダ: {s3_vote_folder}")
+
+    s3_pred_url = os.environ["AWS_S3_PRED_URL"]
+    L.info(f"S3予測データ: {s3_pred_url}")
+
+    s3_racelist_folder = os.environ["AWS_S3_RACELIST_FOLDER"]
+    L.info(f"S3レース一覧フォルダ: {s3_racelist_folder}")
 
     #
     # 投票アクションのメイン処理
     #
-    main(s3_feed_folder, s3_pred_folder, s3_vote_folder)
+    vote_race(s3_vote_folder, s3_pred_url)

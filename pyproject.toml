@@ -13,6 +13,7 @@ boto3 = "^1.28.49"
 pandas = "^2.1.0"
 poethepoet = "^0.22.1"
 numpy = "^1.25"
+joblib = "^1.3.2"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -43,7 +44,5 @@ fix = [{cmd="autopep8 -ivr ./boatrace_vote/ ./tests/"}, {cmd="isort ./boatrace_v
 test = "pytest"
 
 create_racelist = "python boatrace_vote/create_racelist.py"
-find_vote_race = "python boatrace_vote/find_vote_race.py"
 vote_race = "python boatrace_vote/vote_race.py"
-find_payoff_race = "python boatrace_vote/find_payoff_race.py"
-payoff_race = "python boatrace_vote/payoff_race.py"
+vote_result = "python boatrace_vote/vote_result.py"

@@ -85,11 +85,15 @@ def vote__expected_return(df_arg_vote):
     df_vote["odds__rank"] = df_vote["odds_1"].rank(method="dense")
     df_vote["expected_return"] = df_vote["pred_ticket"] * df_vote["odds_1"]
 
-    # 投票対象の舟券を抽出する
-    df_vote = df_vote.query(f"pred_ticket>={pred_threshold} and expected_return>={expected_return_threshold} and odds__rank>{odds_rank_threshold}")
-
     # 舟券に投票する
-    df_vote["vote_amount"] = 1
+    df_vote["vote_amount"] = 0
+
+    df_vote.loc[
+        (df_vote["pred_ticket"] >= pred_threshold)
+        & (df_vote["expected_return"] >= expected_return_threshold)
+        & (df_vote["odds__rank"] > odds_rank_threshold),
+        "vote_amount"
+    ] = 1
 
     return df_vote
 
@@ -97,8 +101,7 @@ def vote__expected_return(df_arg_vote):
 def upload_vote(s3_client, df_arg_racelist, df_arg_vote, arg_race_id, arg_vote_folder):
     create_racelist.put_racelist(s3_client, df_arg_racelist, arg_vote_folder)
 
-    if len(df_arg_vote) > 0:
-        put_vote(s3_client, df_arg_vote, arg_race_id, arg_vote_folder)
+    put_vote(s3_client, df_arg_vote, arg_race_id, arg_vote_folder)
 
 
 def vote_race(s3_vote_folder, s3_pred_folder):

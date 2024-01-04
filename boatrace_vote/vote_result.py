@@ -83,7 +83,7 @@ def evaluate_vote(df_arg_vote_result):
 
     # 評価する
     vote_summary = {
-        "投票数": len(df_arg_vote_result),
+        "投票数": len(df_arg_vote_result.query("vote_amount>0")),
         "的中数": len(df_arg_vote_result.query("payoff_amount>0")),
         "費用": df_arg_vote_result["vote_amount"].sum(),
         "収益": df_arg_vote_result["payoff_amount"].sum(),

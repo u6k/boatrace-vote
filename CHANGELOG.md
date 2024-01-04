@@ -22,3 +22,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [#10113: 払戻はデータ読み込み時に率に直す](https://redmine.u6k.me/issues/10113)
 - [#10116: 予測確率偏差値投票を実装する](https://redmine.u6k.me/issues/10116)
 - [#10217: 期待値投票を再実装する](https://redmine.u6k.me/issues/10217)
+- [#10255: 10,5分前オッズによる単勝、二連単の期待値投票アクションをステージング運用する](https://redmine.u6k.me/issues/10255)

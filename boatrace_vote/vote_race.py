@@ -2,6 +2,7 @@ import io
 import json
 import os
 import re
+import time
 from datetime import datetime
 
 import create_racelist
@@ -34,8 +35,8 @@ def get_crawl_racelist(s3_client, arg_racelist_folder):
     return df
 
 
-def get_crawl_race_before_5min(s3_client, arg_racelist_folder, arg_race_id):
-    key_re = re.fullmatch(r"^s3://(\w+)/(.*)$", arg_racelist_folder + f"/race_{arg_race_id}_before_5minutes.json")
+def get_crawl_race_before_minutes(s3_client, arg_racelist_folder, arg_race_id, arg_diff_minutes):
+    key_re = re.fullmatch(r"^s3://(\w+)/(.*)$", arg_racelist_folder + f"/race_{arg_race_id}_before_{arg_diff_minutes}minutes.json")
     s3_key = key_re.group(2)
 
     with io.BytesIO(s3_client.get_object(s3_key)) as b:
@@ -59,14 +60,14 @@ def put_vote(s3_client, df_arg, arg_race_id, arg_vote_folder):
 # レース関連
 #
 
-def merge_pred_and_odds(df_arg_pred, df_arg_odds, arg_race_id):
+def merge_pred_and_odds(df_arg_pred, df_arg_odds, arg_race_id, arg_bet_type):
     df_vote = pd.merge(
         df_arg_pred, df_arg_odds,
         on=["race_id", "bet_type", "bracket_number_1", "bracket_number_2", "bracket_number_3"],
         how="left",
     )
 
-    df_vote = df_vote[df_vote["race_id"] == arg_race_id]
+    df_vote = df_vote[(df_vote["race_id"] == arg_race_id) & (df_vote["bet_type"] == arg_bet_type)]
 
     return df_vote
 
@@ -104,7 +105,7 @@ def upload_vote(s3_client, df_arg_racelist, df_arg_vote, arg_race_id, arg_vote_f
     put_vote(s3_client, df_arg_vote, arg_race_id, arg_vote_folder)
 
 
-def vote_race(s3_vote_folder, s3_pred_folder):
+def vote_race(s3_vote_folder, s3_pred_url, s3_racelist_folder, bet_type, diff_minutes):
     """投票アクションのメイン処理。
     """
 
@@ -146,13 +147,13 @@ def vote_race(s3_vote_folder, s3_pred_folder):
         L.debug(df_crawl_racelist)
 
         #
-        L.info("# 5分前データがあり、未投票のレースを抽出する")
+        L.info("# n分前データがあり、未投票のレースを抽出する")
         #
 
         target_race_id = df_not_voted_racelist["race_id"].values[0]
         L.debug(f"target_race_id={target_race_id}")
 
-        df_crawl_target_race = df_crawl_racelist.query(f"race_id=='{target_race_id}' and diff_minutes==10 and not crawl_datetime.isnull()")
+        df_crawl_target_race = df_crawl_racelist.query(f"race_id=='{target_race_id}' and diff_minutes=={diff_minutes} and not crawl_datetime.isnull()")
         L.debug(f"df_crawl_target_race={df_crawl_target_race.to_dict(orient='records')}")
 
         if len(df_crawl_target_race) == 0:
@@ -161,17 +162,17 @@ def vote_race(s3_vote_folder, s3_pred_folder):
             continue
 
         #
-        L.info("# 対象レースの5分前クロールデータを取得する")
+        L.info("# 対象レースのn分前クロールデータを取得する")
         #
 
-        df_race_odds = get_crawl_race_before_5min(s3_client, s3_racelist_folder, target_race_id)
+        df_race_odds = get_crawl_race_before_minutes(s3_client, s3_racelist_folder, target_race_id, diff_minutes)
         L.debug(df_race_odds)
 
         #
-        L.info("# 対象レースの舟券予測データと5分前クロールデータを結合する")
+        L.info("# 対象レースの舟券予測データとn分前クロールデータを結合する")
         #
 
-        df_vote = merge_pred_and_odds(df_pred_ticket, df_race_odds, target_race_id)
+        df_vote = merge_pred_and_odds(df_pred_ticket, df_race_odds, target_race_id, bet_type)
         L.debug(df_vote)
 
         #
@@ -205,7 +206,13 @@ if __name__ == "__main__":
     s3_racelist_folder = os.environ["AWS_S3_RACELIST_FOLDER"]
     L.info(f"S3レース一覧フォルダ: {s3_racelist_folder}")
 
+    bet_type = int(os.environ["BET_TYPE"])
+    L.info(f"舟券種: {bet_type}")
+
+    diff_minutes = int(os.environ["DIFF_MINUTES"])
+    L.info(f"n分前: {diff_minutes}")
+
     #
     # 投票アクションのメイン処理
     #
-    vote_race(s3_vote_folder, s3_pred_url)
+    vote_race(s3_vote_folder, s3_pred_url, s3_racelist_folder, bet_type, diff_minutes)

@@ -149,12 +149,12 @@ def vote_race(s3_vote_folder, s3_pred_folder):
         target_race_id = df_not_voted_racelist["race_id"].values[0]
         L.debug(f"target_race_id={target_race_id}")
 
-        df_crawl_target_race = df_crawl_racelist.query(f"race_id=='{target_race_id}' and diff_minutes==5")
+        df_crawl_target_race = df_crawl_racelist.query(f"race_id=='{target_race_id}' and diff_minutes==10 and not crawl_datetime.isnull()")
         L.debug(f"df_crawl_target_race={df_crawl_target_race.to_dict(orient='records')}")
 
         if len(df_crawl_target_race) == 0:
-            L.debug("そもそも対象レースがクロール一覧に存在しない")
-            df_racelist.loc[df_racelist["race_id"] == target_race_id, "vote_timestamp"] = datetime.now()
+            L.debug("対象レースのクロールデータがまだ存在しない")
+            time.sleep(1)
             continue
 
         #

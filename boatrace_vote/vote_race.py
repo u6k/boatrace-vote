@@ -73,26 +73,32 @@ def merge_pred_and_odds(df_arg_pred, df_arg_odds, arg_race_id, arg_bet_type):
 
 
 def vote__expected_return(df_arg_vote):
-    """対象レースに期待値投票(均等払い戻し)(仮)する。
+    """対象レースに期待値投票する。
     """
 
-    pred_threshold = float(os.environ["PRED_THRESHOLD"])
-    expected_return_threshold = float(os.environ["EXPECTED_RETURN_THRESHOLD"])
-    odds_rank_threshold = int(os.environ["ODDS_RANK_THRESHOLD"])
+    pred_threshold_median = float(os.environ["PRED_THRESHOLD_MEDIAN"])
+    pred_threshold_range = float(os.environ["PRED_THRESHOLD_RANGE"])
+    expected_return_threshold_median = float(os.environ["EXPECTED_RETURN_THRESHOLD_MEDIAN"])
+    expected_return_threshold_range = float(os.environ["EXPECTED_RETURN_THRESHOLD_RANGE"])
+
+    pred_threshold_min = pred_threshold_median - pred_threshold_range
+    pred_threshold_max = pred_threshold_median + pred_threshold_range
+    expected_return_threshold_min = expected_return_threshold_median - expected_return_threshold_range
+    expected_return_threshold_max = expected_return_threshold_median + expected_return_threshold_range
 
     df_vote = df_arg_vote.copy()
 
-    # オッズ順、期待値を算出する
-    df_vote["odds__rank"] = df_vote["odds_1"].rank(method="dense")
+    # 期待値を算出する
     df_vote["expected_return"] = df_vote["pred_ticket"] * df_vote["odds_1"]
 
     # 舟券に投票する
     df_vote["vote_amount"] = 0
 
     df_vote.loc[
-        (df_vote["pred_ticket"] >= pred_threshold)
-        & (df_vote["expected_return"] >= expected_return_threshold)
-        & (df_vote["odds__rank"] > odds_rank_threshold),
+        (pred_threshold_min <= df_vote["pred_ticket"])
+        & (df_vote["pred_ticket"] < pred_threshold_max)
+        & (expected_return_threshold_min <= df_vote["expected_return"])
+        & (df_vote["expected_return"] < expected_return_threshold_max),
         "vote_amount"
     ] = 1
 
